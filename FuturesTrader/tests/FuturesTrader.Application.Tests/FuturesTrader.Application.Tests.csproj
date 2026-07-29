@@ -10,6 +10,8 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.10" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
@@ -20,8 +22,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\FuturesTrader.Application\FuturesTrader.Application.csproj" />
     <ProjectReference Include="..\..\src\FuturesTrader.Domain\FuturesTrader.Domain.csproj" />
-    <ProjectReference Include="..\..\src\FuturesTrader.Infrastructure\FuturesTrader.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
