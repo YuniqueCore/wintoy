@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FuturesTrader.Application/FuturesTrader.Application.csproj" />
+    <Project Path="src/FuturesTrader.Domain/FuturesTrader.Domain.csproj" />
+    <Project Path="src/FuturesTrader.Host/FuturesTrader.Host.csproj" />
+    <Project Path="src/FuturesTrader.Infrastructure/FuturesTrader.Infrastructure.csproj" />
+    <Project Path="src/FuturesTrader.Presentation/FuturesTrader.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FuturesTrader.Domain.Tests/FuturesTrader.Domain.Tests.csproj" />
+    <Project Path="tests/FuturesTrader.Infrastructure.Tests/FuturesTrader.Infrastructure.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/ConfigMigrator/ConfigMigrator.csproj" />
+  </Folder>
+</Solution>
