@@ -4,6 +4,8 @@
                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+                 xmlns:domain="clr-namespace:FuturesTrader.Domain.Trading;assembly=FuturesTrader.Domain"
                  xmlns:controls="clr-namespace:FuturesTrader.Presentation.Controls"
                  xmlns:vm="clr-namespace:FuturesTrader.Presentation.ViewModels"
                  mc:Ignorable="d"
@@ -13,6 +15,19 @@
                  Background="#1E1E1E"
                  WindowStartupLocation="Manual"
                  KeyDown="OnWindowKeyDown">
+    <ui:FluentWindow.Resources>
+        <!-- 枚举值源：ComboBox ItemsSource 绑定 Direction/OffsetFlag 枚举 -->
+        <ObjectDataProvider x:Key="DirectionValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="domain:Direction"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+        <ObjectDataProvider x:Key="OffsetFlagValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="domain:OffsetFlag"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+    </ui:FluentWindow.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -67,9 +82,99 @@
                                    RowHeight="18"
                                    MouseWheelSpeed="3"/>
 
-        <!-- 底部下单区占位（M3 填充） -->
-        <Border Grid.Row="2" Background="#2D2D2D" Padding="10,6">
-            <TextBlock Text="下单区（M3 实现）" Foreground="#757575" FontSize="11" HorizontalAlignment="Center"/>
+        <!-- 底部下单区：买卖/开平/价格/数量/报单/撤单。DataContext 切到 Order VM。 -->
+        <Border Grid.Row="2" Background="#2D2D2D" Padding="10,8" DataContext="{Binding Order}">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- 第 1 行：方向 + 开平 -->
+                <Grid Grid.Row="0" Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="方向" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding Source={StaticResource DirectionValues}}"
+                              SelectedItem="{Binding Direction, Mode=TwoWay}"
+                              FontSize="12" Margin="0,0,8,0"/>
+                    <TextBlock Grid.Column="2" Text="开平" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Grid.Column="3"
+                              ItemsSource="{Binding Source={StaticResource OffsetFlagValues}}"
+                              SelectedItem="{Binding OffsetFlag, Mode=TwoWay}"
+                              FontSize="12"/>
+                </Grid>
+
+                <!-- 第 2 行：价格 + 数量 -->
+                <Grid Grid.Row="1" Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="价格" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ui:NumberBox Grid.Column="1"
+                                  Value="{Binding Price, Mode=TwoWay}"
+                                  ClearButtonEnabled="False"
+                                  FontSize="13" Margin="0,0,8,0"/>
+                    <TextBlock Grid.Column="2" Text="数量" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ui:NumberBox Grid.Column="3"
+                                  Value="{Binding Quantity, Mode=TwoWay}"
+                                  ClearButtonEnabled="False"
+                                  FontSize="13"/>
+                </Grid>
+
+                <!-- 第 3 行：报单 + 撤单按钮。报单按钮按方向变色（买绿/卖红） -->
+                <Grid Grid.Row="2" Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0"
+                            Content="报单"
+                            Command="{Binding OrderCommand}"
+                            FontSize="14" FontWeight="Bold" Padding="0,8" Margin="0,0,6,0"
+                            Foreground="White">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="#666666"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Direction}" Value="{x:Static domain:Direction.Buy}">
+                                        <Setter Property="Background" Value="#43A047"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Direction}" Value="{x:Static domain:Direction.Sell}">
+                                        <Setter Property="Background" Value="#E53935"/>
+                                    </DataTrigger>
+                                    <Trigger Property="IsEnabled" Value="False">
+                                        <Setter Property="Background" Value="#3A3A3A"/>
+                                        <Setter Property="Foreground" Value="#757575"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Grid.Column="1"
+                            Content="撤单"
+                            Command="{Binding CancelCommand}"
+                            Width="80" FontSize="13" Padding="0,8"
+                            Background="#555555" Foreground="White"/>
+                </Grid>
+
+                <!-- 第 4 行：状态反馈 -->
+                <TextBlock Grid.Row="3"
+                           Text="{Binding StatusMessage}"
+                           FontSize="11" Foreground="#9E9E9E"
+                           TextTrimming="CharacterEllipsis"
+                           Margin="0,2,0,0"/>
+            </Grid>
         </Border>
     </Grid>
 </ui:FluentWindow>

@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FuturesTrader.Application\FuturesTrader.Application.csproj" />
+    <ProjectReference Include="..\..\src\FuturesTrader.Infrastructure\FuturesTrader.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\FuturesTrader.Presentation\FuturesTrader.Presentation.csproj" />
   </ItemGroup>
 

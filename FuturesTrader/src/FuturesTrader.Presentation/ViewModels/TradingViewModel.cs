@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
 using FuturesTrader.Domain.MarketData;
+using FuturesTrader.Domain.Trading;
 using FuturesTrader.Presentation.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -17,6 +18,9 @@ namespace FuturesTrader.Presentation.ViewModels;
 /// 构造时订阅本合约行情流 → Dispatcher 刷新 <see cref="PriceLadder"/>（价差居中）+ 摘要字段。
 /// <see cref="InstrumentCode"/> 为合约代码；<see cref="PriceLadderLevels"/> 控制上下档位数（默认 5）。
 /// 行情推送在 CTP/Mock 工作线程触发，回调内通过 <see cref="MarshalToUi"/> 切回 UI 线程刷新。
+/// <para>
+/// <see cref="Order"/> 为下单区 VM（买卖/开平/价格/数量 + 报单/撤单），行情到达时同步 PriceTick 给它做价格校验。
+/// </para>
 /// </summary>
 public sealed partial class TradingViewModel : ObservableObject, IDisposable
 {
@@ -35,7 +39,10 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         IKeyboardOperationService keyboard,
         ISoundService sound,
         IOptions<MarketDataOptions> options,
-        ILogger<TradingViewModel> logger)
+        ILogger<TradingViewModel> logger,
+        ITradingService trading,
+        ILocalRiskService risk,
+        ILogger<OrderViewModel> orderLogger)
     {
         InstrumentCode = instrumentCode;
         _marketData = marketData;
@@ -44,6 +51,9 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         _options = options.Value;
         _logger = logger;
         PriceLadderLevels = _options.PriceLadderLevels;
+
+        // 下单区 VM：每合约独立实例，共享交易/风控单例服务
+        Order = new OrderViewModel(instrumentCode, trading, risk, orderLogger);
 
         // 推迟到 UI 线程空闲后订阅，避免构造期间行情回调竞态
         MarshalToUi(Subscribe, immediateIfNoDispatcher: true);
@@ -54,6 +64,9 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
 
     /// <summary>价格梯上下档位数（从 MarketDataOptions 绑定）。</summary>
     public int PriceLadderLevels { get; }
+
+    /// <summary>下单区 VM（买卖/开平/价格/数量 + 报单/撤单）。XAML 下单面板 DataContext={Binding Order}。</summary>
+    public OrderViewModel Order { get; }
 
     [ObservableProperty]
     public partial PriceLadder? PriceLadder { get; private set; }
@@ -154,7 +167,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             "下移选中价位");
     }
 
-    /// <summary>窗口关闭时退订（释放订阅，避免泄漏）。</summary>
+    /// <summary>窗口关闭时退订（释放订阅 + 下单 VM，避免泄漏）。</summary>
     public void Dispose()
     {
         if (_disposed) return;
@@ -168,6 +181,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             _logger.LogWarning(ex, "退订行情失败 {Instrument}", InstrumentCode);
         }
         _subscriptions.Dispose();
+        Order.Dispose();
     }
 
     private static string StateToText(Domain.MarketData.ConnectionState state) => state switch

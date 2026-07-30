@@ -3,10 +3,13 @@ using FuturesTrader.Application;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
 using FuturesTrader.Domain.MarketData;
+using FuturesTrader.Domain.Trading;
 using FuturesTrader.Infrastructure.MarketData;
 using FuturesTrader.Infrastructure.MarketData.Ctp;
 using FuturesTrader.Infrastructure.Persistence;
 using FuturesTrader.Infrastructure.Persistence.WindowGroups;
+using FuturesTrader.Infrastructure.Trading;
+using FuturesTrader.Infrastructure.Trading.Ctp;
 using FuturesTrader.Presentation.Abstractions;
 using FuturesTrader.Presentation.Services;
 using FuturesTrader.Presentation.ViewModels;
@@ -97,6 +100,53 @@ public partial class App : System.Windows.Application
                     return new SimulatedMarketDataService(
                         opts.MockTickIntervalMs,
                         loggerFactory.CreateLogger<SimulatedMarketDataService>());
+                });
+
+                // 交易双源：TradingOptions.Provider 决定装配 Mock 或 Ctp（与行情对称）。
+                // CTP 模式直连 thosttraderapi_se.dll，需认证 BrokerID/UserID/Password/AppID/AuthCode。
+                services.Configure<TradingOptions>(ctx.Configuration.GetSection("Trading"));
+                services.AddSingleton<ITradingService>(sp =>
+                {
+                    var opts = sp.GetRequiredService<IOptions<TradingOptions>>().Value;
+                    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+                    if (opts.Provider == TradingProvider.Ctp)
+                    {
+                        Log.Information("CTP 交易实现启用：Front={Front} Flow={Flow} Broker={Broker} User={User}",
+                            opts.FrontAddress, opts.FlowPath, opts.BrokerId, opts.UserId);
+                        return new CtpTradingService(
+                            opts,
+                            loggerFactory.CreateLogger<CtpTradingService>());
+                    }
+                    Log.Information("Mock 交易实现启用（离线模拟报单/撤单/成交）");
+                    return new MockTradingService(
+                        loggerFactory.CreateLogger<MockTradingService>());
+                });
+
+                // 本地风控单例：从 config.ini [Order] 段加载 OrderConfig 构造 LocalRiskService。
+                // 全会话共享一份计数器（撤单/报单限额按交易日计，不按合约隔离）。
+                services.AddSingleton<ILocalRiskService>(sp =>
+                {
+                    var configRepo = sp.GetRequiredService<IConfigRepository>();
+                    var configOpts = sp.GetRequiredService<IOptions<ConfigFileOptions>>().Value;
+                    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+                    try
+                    {
+                        var cloud = configRepo.Load(configOpts.Path);
+                        Log.Information("本地风控已加载：RiskOpen={Risk} MaxInput={Input} MaxPos={Pos} GZ={Gz} SP={Sp} QQ={Qq}",
+                            cloud.Order.RiskOpen, cloud.Order.MaxInputCount, cloud.Order.MaxPositionCount,
+                            cloud.Order.MaxCancelGz, cloud.Order.MaxCancelSp, cloud.Order.MaxCancelQq);
+                        return new LocalRiskService(
+                            cloud.Order,
+                            loggerFactory.CreateLogger<LocalRiskService>());
+                    }
+                    catch (Exception ex)
+                    {
+                        // config.ini 缺失或解析失败时退回默认配置（风控关闭），不阻断启动
+                        Log.Warning(ex, "加载 config.ini Order 段失败，本地风控使用默认配置（关闭）");
+                        return new LocalRiskService(
+                            new Domain.Configuration.OrderConfig(),
+                            loggerFactory.CreateLogger<LocalRiskService>());
+                    }
                 });
 
                 // 声音/键盘单例：CTP 回调触发 Play/快捷键集中派发

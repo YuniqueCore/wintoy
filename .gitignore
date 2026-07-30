@@ -86,3 +86,4 @@ TestResult.xml
 nunit-*.xml
 
 docs\reverse-engineering\*
+docs\design\
