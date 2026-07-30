@@ -20,6 +20,10 @@ public sealed class MockTradingService : ITradingService
     private readonly Subject<ConnectionState> _connection = new();
     private readonly ILogger<MockTradingService> _logger;
     private int _orderRefSeq;
+    // 模拟 CTP FrontID/SessionID 三元组定位：固定为 1（CTP 单实例下 FrontID/SessionID 永为 1），
+    // 让 OrderViewModel 在 Accepted 时能回填 FrontId/SessionId，后续撤单流程可正确定位报单。
+    private const int MockFrontId = 1;
+    private const int MockSessionId = 1;
     private int _disposed;
 
     public MockTradingService(ILogger<MockTradingService>? logger = null)
@@ -75,10 +79,13 @@ public sealed class MockTradingService : ITradingService
 
         string orderRef = request.OrderRef ?? Interlocked.Increment(ref _orderRefSeq).ToString();
 
-        // 模拟 Accepted
+        // 模拟 Accepted（含 FrontId/SessionId，让 OrderViewModel 正确回填三元组，
+        // 后续 CancelOrderAsync 才能定位报单。CTP 真实场景也是 Accepted 时同时推这三个字段）
         _orders.OnNext(new OrderResult
         {
             OrderRef = orderRef,
+            FrontId = MockFrontId,
+            SessionId = MockSessionId,
             InstrumentId = request.InstrumentId,
             Direction = request.Direction,
             OffsetFlag = request.OffsetFlag,

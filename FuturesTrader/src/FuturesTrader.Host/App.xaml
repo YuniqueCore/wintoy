@@ -17,7 +17,9 @@
             <!-- 业务语义画刷：红蓝持仓/涨跌/警告色，dark/light 通用（业务色不随主题切换）。
                  通用背景/文字色直接引用 WPF UI 语义画刷（ApplicationBackgroundBrush/CardBackgroundBrush/
                  TextFillColorPrimaryBrush/TextFillColorSecondaryBrush 等），它们由 ApplicationThemeManager.Apply
-                 随主题自动更新，解决 dark/light 切换时"一半白一半黑"问题。 -->
+                 随主题自动更新，解决 dark/light 切换时"一半白一半黑"问题。
+                 主题感知变体（AskRowBg/BidRowBg/CenterRowBg）由 ThemeService 切主题时刷新，
+                 以保证合约窗口 PriceList 跟浮动栏 Switcher 一样随主题切换。 -->
             <SolidColorBrush x:Key="ShortPositionBackgroundBrush" Color="#3D0000"/>
             <SolidColorBrush x:Key="LongPositionBackgroundBrush" Color="#001F3D"/>
             <SolidColorBrush x:Key="ShortPositionTextBrush" Color="#FFAAAA"/>
@@ -27,6 +29,26 @@
             <SolidColorBrush x:Key="WarningTextBrush" Color="#FF6666"/>
             <SolidColorBrush x:Key="AccountIdBrush" Color="#FFC060FF"/>
             <SolidColorBrush x:Key="AccountSummaryBrush" Color="#FFFF4040"/>
+            <!-- 主题感知的 PriceList 画刷：默认 Dark；ThemeService 切到 Light 时整体替换为浅色变体。
+                 用 DynamicResource 引用即可让运行时切换即时生效。 -->
+            <SolidColorBrush x:Key="PriceListAskRowBackgroundBrush" Color="#3D0000"/>
+            <SolidColorBrush x:Key="PriceListBidRowBackgroundBrush" Color="#001F3D"/>
+            <SolidColorBrush x:Key="PriceListAskPriceForegroundBrush" Color="#FF6666"/>
+            <SolidColorBrush x:Key="PriceListBidPriceForegroundBrush" Color="#66AAFF"/>
+            <SolidColorBrush x:Key="PriceListAskVolumeForegroundBrush" Color="#FFAAAA"/>
+            <SolidColorBrush x:Key="PriceListBidVolumeForegroundBrush" Color="#AAAAFF"/>
+            <SolidColorBrush x:Key="PriceListCenterRowBackgroundBrush" Color="#FFC107"/>
+            <SolidColorBrush x:Key="PriceListControlBackgroundBrush" Color="#1E1E1E"/>
+            <SolidColorBrush x:Key="PriceListPendingOrderForegroundBrush" Color="#FFD740"/>
+            <!-- 主题感知的 Hover 画刷：用于合约窗口卡片 + 价格梯行 hover 反馈。
+                 比默认行色略亮（Dark 主题）或略深（Light 主题）10% 左右，仅影响背景，
+                 前景色不变以保证可读性。ThemeService 切主题时整体替换为对应变体。 -->
+            <SolidColorBrush x:Key="PriceListAskRowHoverBackgroundBrush" Color="#5D1010"/>
+            <SolidColorBrush x:Key="PriceListBidRowHoverBackgroundBrush" Color="#10294D"/>
+            <SolidColorBrush x:Key="PriceListCenterRowHoverBackgroundBrush" Color="#FFD740"/>
+            <!-- 卡片 hover：略微提亮（Dark）/ 略微压暗（Light），与 WPF UI 的 ControlFillColorSecondary
+                 行为一致；前景色不依赖此画刷，因此不影响可读性。 -->
+            <SolidColorBrush x:Key="CardHoverBackgroundBrush" Color="#383838"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

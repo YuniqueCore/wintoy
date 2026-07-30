@@ -141,25 +141,78 @@ public sealed class WindowManager : IWindowHost
         // 再 OpenGroup 用布局中的位置紧排。下次切回该组时不会因上次拖动基线错位而重叠。
         CloseGroup(groupId);
 
-        // 水平紧密排列 + 整组居中：计算总宽度后从屏幕工作区水平居中起始
+        // 水平紧密排列 + 整组居中：计算总宽度后从屏幕工作区水平居中起始。
+        // 关键修复：用 ClampWidth 强制最小宽度 320（默认 271 太小导致叠加时窗口收窄不可见），
+        // 并用 Open 后的实际窗口宽度（ActualWidth）作为下一个窗口的左偏移计算依据，
+        // 避免 DPI 缩放/Chrome 修饰导致 Width ≠ ActualWidth 引发的窗口重叠。
         var workArea = SystemParameters.WorkArea;
         var startY = workArea.Top + 8;
         var spacing = _uiOptions.CompactSpacing;
-        var windowWidths = windows.Select(w => Math.Max(w.Width, 320)).ToArray();
-        var totalWidth = windowWidths.Sum() + (windows.Count - 1) * spacing;
-        var currentX = workArea.Left + Math.Max(8, (workArea.Width - totalWidth) / 2);
+        var arranged = new List<InstrumentWindow>(windows.Count);
 
+        // 第一遍：先算每个窗口应该摆放的 Left（用配置 Width + spacing，spacing=0 表示完全紧贴），
+        // 避免窗口之间出现「边界缝隙」或「重叠 1 像素」。
+        var arrangedWidths = windows.Select(w => Math.Max(w.Width, 320)).ToArray();
+        var totalWidth = arrangedWidths.Sum() + Math.Max(0, windows.Count - 1) * spacing;
+        var currentX = workArea.Left + Math.Max(8, (int)((workArea.Width - totalWidth) / 2));
         for (var i = 0; i < windows.Count; i++)
         {
             var w = windows[i];
-            var arranged = w with { Left = (int)currentX, Top = (int)startY };
-            currentX += windowWidths[i] + spacing;
-            Open(arranged);
+            arranged.Add(w with { Left = (int)currentX, Top = (int)startY });
+            currentX += arrangedWidths[i] + spacing;
         }
+
+        // 第二遍：开窗（Open 内部用 arranged.Left/Top），开完后用 _open 中的实际窗口同步一次 Left，
+        // 防止 tradingWindow 构造时 Width 设定后 chrome 调整让 ActualWidth 与预期不一致。
+        for (var i = 0; i < arranged.Count; i++)
+        {
+            Open(arranged[i]);
+        }
+
+        // 第三遍：用实际渲染后的 ActualWidth 校正 Left（最关键的「无重叠」保证）。
+        // 如果 ActualWidth < 预期宽度（窗口被压缩），左移后续窗口；反之亦然。
+        // 用 synchronized 字典的引用顺序：按 Open 调用顺序遍历 _open 中当前组。
+        TightenGroupLayout(groupId, spacing);
 
         _logger.LogInformation("已打开分组 {GroupId} 的 {Count} 个窗口（隐藏其他组 + 重排）",
             groupId, windows.Count);
     });
+
+    /// <summary>
+    /// 按当前 _open 字典的顺序，重新计算同组窗口的 Left，确保相邻窗口 ActualWidth 紧贴 + spacing，
+    /// 避免 Open 时 Width 设置与实际渲染后 ActualWidth 不一致导致的 1-2 像素重叠或缝隙。
+    /// 复刻 0527.exe「窗口边缘紧贴」语义。
+    /// </summary>
+    private void TightenGroupLayout(int groupId, int spacing)
+    {
+        List<Window> sameGroup;
+        lock (_open)
+        {
+            sameGroup = _open
+                .Where(kv => kv.Value.GroupId == groupId)
+                .Select(kv => kv.Value.Window)
+                .ToList();
+        }
+        if (sameGroup.Count <= 1) return;
+
+        // 按当前 Left 升序排列 → 从左到右依次重排
+        sameGroup.Sort((a, b) => a.Left.CompareTo(b.Left));
+
+        // 第一窗口：从它的 Left 开始
+        var currentLeft = sameGroup[0].Left;
+        sameGroup[0].Left = currentLeft;
+        for (var i = 1; i < sameGroup.Count; i++)
+        {
+            var prev = sameGroup[i - 1];
+            var expectedNextLeft = prev.Left + prev.ActualWidth + spacing;
+            // 只有当现有 Left 与期望差距 > 0.5 像素时才校正（避免抖动）
+            if (Math.Abs(sameGroup[i].Left - expectedNextLeft) > 0.5)
+            {
+                sameGroup[i].Left = expectedNextLeft;
+            }
+            currentLeft = sameGroup[i].Left;
+        }
+    }
 
     /// <summary>隐藏所有非 <paramref name="keepGroupId"/> 分组的窗口（不关，保留 VM 状态）。</summary>
     private int HideOtherGroups(int keepGroupId)

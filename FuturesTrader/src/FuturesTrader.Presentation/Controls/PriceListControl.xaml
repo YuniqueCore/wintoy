@@ -7,21 +7,24 @@
              xmlns:marketData="clr-namespace:FuturesTrader.Domain.MarketData;assembly=FuturesTrader.Domain"
              mc:Ignorable="d"
              d:DesignHeight="600" d:DesignWidth="360"
-             Background="#1E1E1E"
+             Background="{DynamicResource PriceListControlBackgroundBrush}"
              Focusable="True"
              PreviewMouseWheel="OnPreviewMouseWheel">
     <UserControl.Resources>
-        <!-- 5 列按 PriceListRatios=10,25,30,25,10 比例（档位/买量/价格/卖量/价差） -->
+        <!-- 5 列按 PriceListRatios=10,25,30,25,10 比例（挂单数/买量/价格/卖量/价差）。
+             调整为 5 列后第 0 列专门显示本档位的本地挂单数（PendingOrderCount），由
+             TradingViewModel 维护的 _pendingByPrice 聚合，>0 时用户点击该格可撤单。 -->
         <GridLength x:Key="ColRatio1">1*</GridLength>
         <GridLength x:Key="ColRatio2">2.5*</GridLength>
         <GridLength x:Key="ColRatio3">3*</GridLength>
         <GridLength x:Key="ColRatio4">2.5*</GridLength>
         <GridLength x:Key="ColRatio5">1*</GridLength>
 
-        <!-- 空单挂单区行模板（上方，红色背景 #3D0000） -->
+        <!-- 空单挂单区行模板（上方）：挂单数 + 买量(空) + 价格 + 卖量 + 价差(空)。
+             全部颜色用 DynamicResource，主题切换时 ThemeService 改 App.Resources 即可生效。 -->
         <DataTemplate x:Key="AskRowTemplate" DataType="marketData:PriceLevel">
             <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                  Background="#3D0000">
+                  Background="{DynamicResource PriceListAskRowBackgroundBrush}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="{StaticResource ColRatio1}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio2}"/>
@@ -29,22 +32,40 @@
                     <ColumnDefinition Width="{StaticResource ColRatio4}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio5}"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="" />
+                <!-- 列 0：本档位用户挂单数（自己挂的未成交报单）。>0 时高亮，点击可撤单（MouseDown 抢占路由事件）。 -->
+                <TextBlock Grid.Column="0"
+                           Text="{Binding PendingOrderCount, FallbackValue=''}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           FontWeight="SemiBold" Cursor="Hand"
+                           Foreground="{DynamicResource PriceListPendingOrderForegroundBrush}"
+                           MouseDown="OnPendingOrderCellMouseDown"
+                           ToolTip="点击撤单本档位所有挂单">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <!-- 0 时透明（无挂单不显示占位） -->
+                                <DataTrigger Binding="{Binding PendingOrderCount}" Value="0">
+                                    <Setter Property="Visibility" Value="Hidden"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
                 <TextBlock Grid.Column="1" Text="" />
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="#FF6666" FontWeight="Bold"/>
+                           Foreground="{DynamicResource PriceListAskPriceForegroundBrush}" FontWeight="Bold"/>
                 <TextBlock Grid.Column="3" Text="{Binding AskVolume}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="#FFAAAA"/>
+                           Foreground="{DynamicResource PriceListAskVolumeForegroundBrush}"/>
                 <TextBlock Grid.Column="4" Text="" />
             </Grid>
         </DataTemplate>
 
-        <!-- 多单挂单区行模板（下方，蓝色背景 #001F3D） -->
+        <!-- 多单挂单区行模板（下方）：挂单数 + 买量 + 价格 + 卖量(空) + 价差(空)。 -->
         <DataTemplate x:Key="BidRowTemplate" DataType="marketData:PriceLevel">
             <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                  Background="#001F3D">
+                  Background="{DynamicResource PriceListBidRowBackgroundBrush}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="{StaticResource ColRatio1}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio2}"/>
@@ -52,22 +73,38 @@
                     <ColumnDefinition Width="{StaticResource ColRatio4}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio5}"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="" />
+                <TextBlock Grid.Column="0"
+                           Text="{Binding PendingOrderCount, FallbackValue=''}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           FontWeight="SemiBold" Cursor="Hand"
+                           Foreground="{DynamicResource PriceListPendingOrderForegroundBrush}"
+                           MouseDown="OnPendingOrderCellMouseDown"
+                           ToolTip="点击撤单本档位所有挂单">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding PendingOrderCount}" Value="0">
+                                    <Setter Property="Visibility" Value="Hidden"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
                 <TextBlock Grid.Column="1" Text="{Binding BidVolume}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="#AAAAFF"/>
+                           Foreground="{DynamicResource PriceListBidVolumeForegroundBrush}"/>
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="#66AAFF" FontWeight="Bold"/>
+                           Foreground="{DynamicResource PriceListBidPriceForegroundBrush}" FontWeight="Bold"/>
                 <TextBlock Grid.Column="3" Text="" />
                 <TextBlock Grid.Column="4" Text="" />
             </Grid>
         </DataTemplate>
 
-        <!-- 中心最新价行模板（高亮 #FFC107） -->
+        <!-- 中心最新价行模板（高亮）：挂单数 + 买量 + 价格 + 卖量 + 价差(空)。 -->
         <DataTemplate x:Key="CenterRowTemplate" DataType="marketData:PriceLevel">
             <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                  Background="#FFC107">
+                  Background="{DynamicResource PriceListCenterRowBackgroundBrush}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="{StaticResource ColRatio1}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio2}"/>
@@ -75,7 +112,22 @@
                     <ColumnDefinition Width="{StaticResource ColRatio4}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio5}"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="►" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
+                <TextBlock Grid.Column="0"
+                           Text="{Binding PendingOrderCount, FallbackValue=''}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"
+                           Foreground="#FF3D00" Cursor="Hand"
+                           MouseDown="OnPendingOrderCellMouseDown"
+                           ToolTip="点击撤单本档位所有挂单">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding PendingOrderCount}" Value="0">
+                                    <Setter Property="Visibility" Value="Hidden"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
                 <TextBlock Grid.Column="1" Text="{Binding BidVolume}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"

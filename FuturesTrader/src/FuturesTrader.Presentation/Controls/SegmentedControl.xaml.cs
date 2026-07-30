@@ -97,8 +97,19 @@ public sealed partial class SegmentedControl : UserControl
 
     private static void OnSelectedValueChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        ((SegmentedControl)d).SyncSelectionFromValue(e.NewValue);
+        var ctrl = (SegmentedControl)d;
+        // 当 SegmentItems 还未填充（ItemsSource binding 还没触发）时，先记下初始值，
+        // 等 RebuildSegments 完成时统一应用。否则首次默认选中可能因 SegmentItems 为空而丢失。
+        if (ctrl.SegmentItems.Count == 0)
+        {
+            ctrl._pendingSelection = e.NewValue;
+            return;
+        }
+        ctrl.SyncSelectionFromValue(e.NewValue);
     }
+
+    /// <summary>在 SegmentItems 尚未填充时缓存的初始 SelectedValue，等 RebuildSegments 时使用。</summary>
+    private object? _pendingSelection;
 
     private void RebuildSegments()
     {
@@ -112,7 +123,10 @@ public sealed partial class SegmentedControl : UserControl
             SegmentItems.Add(new SegmentItem(item, label, tooltip, OnSegmentClicked));
         }
 
-        SyncSelectionFromValue(SelectedValue);
+        // 优先用 _pendingSelection（在 SegmentItems 尚未填充时缓存的初始 SelectedValue），
+        // 否则用当前 SelectedValue。
+        SyncSelectionFromValue(_pendingSelection ?? SelectedValue);
+        _pendingSelection = null;
     }
 
     private void OnSegmentClicked(object? value)

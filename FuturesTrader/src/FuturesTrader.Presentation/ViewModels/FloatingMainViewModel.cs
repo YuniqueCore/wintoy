@@ -142,6 +142,34 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     /// <summary>窗口同步模式（成组联动 / 完全独立）。</summary>
     [ObservableProperty] private WindowSyncMode _syncMode = WindowSyncMode.Grouped;
 
+    /// <summary>
+    /// <see cref="SyncMode"/> 变更后通知 <see cref="IsSyncGrouped"/> 重新计算，
+    /// 让 <c>StateToggleButton.IsChecked</c> 双向绑定保持同步（例如通过
+    /// <see cref="ToggleSyncModeCommand"/> 切换后按钮状态即时刷新）。
+    /// </summary>
+    partial void OnSyncModeChanged(WindowSyncMode value) => OnPropertyChanged(nameof(IsSyncGrouped));
+
+    /// <summary>
+    /// 同步模式开关：true=成组联动（Grouped）/ false=完全独立（Independent）。
+    /// <para>
+    /// 派生自 <see cref="SyncMode"/>，供 <c>StateToggleButton.IsChecked</c> 直接 TwoWay 绑定，
+    /// 避免在 XAML 端引入 EnumToBoolConverter。setter 写回 <see cref="SyncMode"/> 并同步到
+    /// <see cref="GroupSynchronizationCoordinator"/>。
+    /// </para>
+    /// </summary>
+    public bool IsSyncGrouped
+    {
+        get => SyncMode == WindowSyncMode.Grouped;
+        set
+        {
+            var next = value ? WindowSyncMode.Grouped : WindowSyncMode.Independent;
+            if (SyncMode == next) return;
+            SyncMode = next;
+            _sync.SyncMode = next;
+            OnPropertyChanged();
+        }
+    }
+
     /// <summary>资金持仓摘要 VM（市/净/可/持/权/手）。</summary>
     public AccountSummaryViewModel? AccountSummary { get; }
 

@@ -225,7 +225,8 @@
                                        RowHeight="{Binding RowHeight, Mode=OneWay}"
                                        MouseWheelSpeed="3"
                                        PriceSelected="OnPriceLeftClicked"
-                                       PriceRightClicked="OnPriceRightClicked"/>
+                                       PriceRightClicked="OnPriceRightClicked"
+                                       PendingOrderCancel="OnPendingOrderCancelClicked"/>
         </Grid>
     </Grid>
 </ui:FluentWindow>

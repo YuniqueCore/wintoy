@@ -36,9 +36,10 @@ public partial class FloatingMainWindow : Window
     public void PositionAtBottom()
     {
         var workArea = SystemParameters.WorkArea;
-        // 仅在首次定位时设置高度（用户 resize 后不再覆盖）
-        if (Height <= 100 || Height > 240)
-            Height = 120;
+        // 仅在首次定位时设置高度（用户 resize 后不再覆盖）。
+        // 默认 145 = 拖动手柄 22 + 三行内容约 120 + 边距。
+        if (Height <= 100 || Height > 260)
+            Height = 145;
         MinWidth = 600;
         if (Width > workArea.Width) Width = workArea.Width;
         Left = workArea.Left + (workArea.Width - Width) / 2;
@@ -46,9 +47,15 @@ public partial class FloatingMainWindow : Window
     }
 
     /// <summary>
-    /// 拖动浮动栏：在根 Border 的空白区域按下鼠标左键时调用 <see cref="Window.DragMove"/>。
+    /// 拖动浮动栏：在专用拖动手柄（Row 0 顶部区域）的空白处按下鼠标左键时调用 <see cref="Window.DragMove"/>。
+    /// <para>
     /// WPF 的路由事件机制保证 Button/ToggleButton 等交互控件会标记 e.Handled=true，
-    /// 不会冒泡到 Border，因此按钮点击不会被误判为拖动。
+    /// 不会冒泡到拖动手柄 Border，因此下方按钮点击不会被误判为拖动。
+    /// </para>
+    /// <para>
+    /// 拖动区域被刻意收窄到顶部专用 22px 横条（含可见 grip），避免在下方密集的按钮区误触
+    /// 拖动——例如在按钮间隙空白处按下想点空白却触发了整窗拖动。
+    /// </para>
     /// </summary>
     private void OnDragMove(object sender, MouseButtonEventArgs e)
     {

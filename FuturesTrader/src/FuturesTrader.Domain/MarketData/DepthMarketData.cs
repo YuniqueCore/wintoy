@@ -41,11 +41,17 @@ public sealed record DepthMarketData
     /// 按价差居中语义生成价格梯：以 <see cref="LastPrice"/> 为中心、<paramref name="priceTick"/> 为步长，
     /// 上下各 <paramref name="levels"/> 档。中心行标注 <see cref="PriceLevel.IsLastPrice"/>。
     /// 5 档买卖盘按价位就近填充（中心上方卖盘、下方买盘）。
+    /// <para>
+    /// <paramref name="pendingByPrice"/> 可选：把外部维护的「价格 → 用户本地挂单数」聚合传入，
+    /// 让 <see cref="PriceLevel.PendingOrderCount"/> 在 UI 第 0 列直接显示（点击可撤单）。
+    /// 留空时所有 <see cref="PriceLevel.PendingOrderCount"/> = 0。
+    /// </para>
     /// </summary>
-    public PriceLadder ToPriceLadder(decimal priceTick, int levels)
+    public PriceLadder ToPriceLadder(decimal priceTick, int levels, IReadOnlyDictionary<decimal, int>? pendingByPrice = null)
     {
         if (priceTick <= 0) priceTick = 1m;
         if (levels <= 0) levels = 5;
+        pendingByPrice ??= new Dictionary<decimal, int>();
 
         var rows = new List<PriceLevel>(levels * 2 + 1);
         // 上方卖盘（空单挂单区，红色）：价格从高到低，最接近 LastPrice 的在最下
@@ -57,6 +63,7 @@ public sealed record DepthMarketData
                 Price = price,
                 AskVolume = VolumeAt(price, AskPrices, AskVolumes, priceTick),
                 BidVolume = 0,
+                PendingOrderCount = LookupPending(pendingByPrice, price, priceTick),
                 Zone = PriceZone.Ask
             });
         }
@@ -67,6 +74,7 @@ public sealed record DepthMarketData
             IsLastPrice = true,
             AskVolume = VolumeAt(LastPrice, AskPrices, AskVolumes, priceTick),
             BidVolume = VolumeAt(LastPrice, BidPrices, BidVolumes, priceTick),
+            PendingOrderCount = LookupPending(pendingByPrice, LastPrice, priceTick),
             Zone = PriceZone.Center
         });
         // 下方买盘（多单挂单区，蓝色）：价格从低到高，最接近 LastPrice 的在最上
@@ -78,6 +86,7 @@ public sealed record DepthMarketData
                 Price = price,
                 BidVolume = VolumeAt(price, BidPrices, BidVolumes, priceTick),
                 AskVolume = 0,
+                PendingOrderCount = LookupPending(pendingByPrice, price, priceTick),
                 Zone = PriceZone.Bid
             });
         }
@@ -91,6 +100,18 @@ public sealed record DepthMarketData
         {
             if (Math.Abs(prices[i] - price) < tick / 2m)
                 return volumes[i];
+        }
+        return 0;
+    }
+
+    /// <summary>把外部挂单聚合按价位（tick 对齐后）查找本档位挂单数；找不到返回 0。</summary>
+    private static int LookupPending(IReadOnlyDictionary<decimal, int> pendingByPrice, decimal price, decimal tick)
+    {
+        // 聚合 key 由 TradingViewModel 写入时已经按 tick 对齐，但防御性扫描 ±tick/2 容差
+        foreach (var kv in pendingByPrice)
+        {
+            if (Math.Abs(kv.Key - price) < tick / 2m)
+                return kv.Value;
         }
         return 0;
     }

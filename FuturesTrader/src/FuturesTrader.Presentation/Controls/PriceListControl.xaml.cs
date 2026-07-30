@@ -81,6 +81,17 @@ public sealed partial class PriceListControl : UserControl
             typeof(EventHandler<PriceSelectedEventArgs>),
             typeof(PriceListControl));
 
+    /// <summary>
+    /// 价位挂单格点击路由事件：用户点击 PriceLevel.PendingOrderCount &gt; 0 的格子时冒泡，
+    /// 携带该行价格（用于按价位撤单）。挂单数 = 0 时不触发。
+    /// </summary>
+    public static readonly RoutedEvent PendingOrderCancelEvent =
+        EventManager.RegisterRoutedEvent(
+            nameof(PendingOrderCancel),
+            RoutingStrategy.Bubble,
+            typeof(EventHandler<PriceSelectedEventArgs>),
+            typeof(PriceListControl));
+
     public PriceListControl()
     {
         InitializeComponent();
@@ -98,6 +109,13 @@ public sealed partial class PriceListControl : UserControl
     {
         add => AddHandler(PriceRightClickedEvent, value);
         remove => RemoveHandler(PriceRightClickedEvent, value);
+    }
+
+    /// <summary>挂单格被点击时触发（携带该行价格，供宿主按价位撤单）。</summary>
+    public event EventHandler<PriceSelectedEventArgs> PendingOrderCancel
+    {
+        add => AddHandler(PendingOrderCancelEvent, value);
+        remove => RemoveHandler(PendingOrderCancelEvent, value);
     }
 
     /// <summary>价格梯数据（行情刷新时整体替换）。</summary>
@@ -179,6 +197,26 @@ public sealed partial class PriceListControl : UserControl
     private void OnPriceRowRightClick(object sender, MouseButtonEventArgs e)
     {
         RaisePriceEvent(e, PriceRightClickedEvent);
+    }
+
+    /// <summary>
+    /// 挂单格（左数第 0 列）点击：只有 PendingOrderCount &gt; 0 的格子才触发 PendingOrderCancel 路由事件。
+    /// 这里拦截左/中键的 MouseDown（不让它冒泡到 ItemsControl.MouseLeftButtonUp 误触发挂单）。
+    /// </summary>
+    private void OnPendingOrderCellMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.Handled) return;
+        if (sender is not FrameworkElement fe || fe.DataContext is not PriceLevel level) return;
+        if (level.PendingOrderCount <= 0) return;
+
+        // 拦截左键 + 中键（右键保留给系统菜单）；不让它再向上冒泡到整行的 MouseLeftButtonUp
+        // （否则会误触发 PlaceOrderFromClickAsync 挂新单）
+        e.Handled = true;
+        RaiseEvent(new PriceSelectedEventArgs(PendingOrderCancelEvent, this)
+        {
+            Price = level.Price,
+            Zone = level.Zone
+        });
     }
 
     /// <summary>从命中元素向上遍历视觉树找到 PriceLevel，触发指定路由事件。</summary>

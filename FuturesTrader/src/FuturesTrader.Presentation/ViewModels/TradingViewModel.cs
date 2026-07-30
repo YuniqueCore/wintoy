@@ -37,6 +37,8 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     private bool _disposed;
     private InstrumentWindow _config;
     private Instrument? _instrument;
+    /// <summary>最近一次行情快照：用于 OrderViewModel 报单回报触发价格梯重建时复用（无需重读行情）。</summary>
+    private DepthMarketData? _lastMarketData;
 
     public TradingViewModel(
         string instrumentCode,
@@ -81,6 +83,8 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
 
         // 下单区 VM：每合约独立实例，共享交易/风控/校验链单例服务
         Order = new OrderViewModel(config.InstrumentCode, trading, risk, orderValidator, orderLogger);
+        // 订阅报单活跃状态变更：触发本合约价格梯重建，让 PendingOrderCount 立即更新
+        Order.ActiveOrdersChanged += (_, _) => RebuildPriceLadder();
 
         // 推迟到 UI 线程空闲后订阅，避免构造期间行情回调竞态
         MarshalToUi(Subscribe, immediateIfNoDispatcher: true);
@@ -287,6 +291,16 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         await PlaceOrderFromClickAsync(price, zone, ValRight);
     }
 
+    /// <summary>
+    /// 撤销指定价位的所有挂单：用户在 PriceListControl 第 0 列点击（挂单数 &gt;0）时调用。
+    /// </summary>
+    public Task CancelOrdersAtPriceAsync(decimal price) => Order.CancelOrdersAtPriceAsync(price);
+
+    /// <summary>
+    /// 全局撤销当前合约的所有活动报单：键盘空格触发，对齐 0527.exe 全局撤单习惯。
+    /// </summary>
+    public Task CancelAllOrdersAsync() => Order.CancelAllOrdersAsync();
+
     /// <summary>按点击区域 + 数量下单：红区=Sell 空单，蓝区=Buy 多单，中心=按 OnlyOpen 决定。</summary>
     private async Task PlaceOrderFromClickAsync(decimal price, PriceZone zone, int volume)
     {
@@ -448,7 +462,8 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         MarshalToUi(() =>
         {
             if (_disposed) return;
-            PriceLadder = data.ToPriceLadder(_priceTick, PriceLadderLevels);
+            _lastMarketData = data;
+            PriceLadder = data.ToPriceLadder(_priceTick, PriceLadderLevels, BuildPendingByPrice());
             OpenPrice = data.OpenPrice;
             HighPrice = data.HighestPrice;
             LowPrice = data.LowestPrice;
@@ -456,6 +471,41 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             OpenInterest = (long)data.OpenInterest;
             UpdateTime = data.UpdateTime.ToString("HH:mm:ss") + "." + data.UpdateMillisec.ToString("D3");
         });
+    }
+
+    /// <summary>
+    /// 由 OrderViewModel.ActiveOrdersChanged 触发的价格梯重建：复用最近一次行情快照，
+    /// 按当前活跃报单聚合（价位 → 数量）传入 ToPriceLadder，让 PriceLevel.PendingOrderCount 即时刷新。
+    /// </summary>
+    private void RebuildPriceLadder()
+    {
+        if (_disposed || _lastMarketData is null) return;
+        MarshalToUi(() =>
+        {
+            if (_disposed || _lastMarketData is null) return;
+            PriceLadder = _lastMarketData.ToPriceLadder(_priceTick, PriceLadderLevels, BuildPendingByPrice());
+        });
+    }
+
+    /// <summary>
+    /// 聚合当前活跃报单为「价格 → 数量」字典（按 PriceTick 对齐 key）。
+    /// 同一价位上多笔挂单合并为一格显示数。
+    /// </summary>
+    private IReadOnlyDictionary<decimal, int> BuildPendingByPrice()
+    {
+        if (Order is null) return new Dictionary<decimal, int>();
+        var snapshot = Order.ActiveOrders;
+        if (snapshot.Count == 0) return new Dictionary<decimal, int>();
+        var dict = new Dictionary<decimal, int>(snapshot.Count);
+        foreach (var (_, info) in snapshot)
+        {
+            // 价位按 PriceTick 对齐（避免浮点漂移导致 ToPriceLadder LookupPending 容差扫描不全）
+            var alignedPrice = _priceTick > 0
+                ? Math.Round(info.Price / _priceTick) * _priceTick
+                : info.Price;
+            dict[alignedPrice] = dict.GetValueOrDefault(alignedPrice) + 1;
+        }
+        return dict;
     }
 
     /// <summary>注册 Up/Down 导航快捷键到 PriceList（M3 扩展时加买卖热键）。</summary>
