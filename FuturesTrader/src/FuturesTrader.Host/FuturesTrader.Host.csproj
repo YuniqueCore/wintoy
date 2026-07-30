@@ -3,8 +3,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <!-- CTP thostmduserapi_se.dll 是 32 位，进程必须 x86 -->
-    <PlatformTarget>x86</PlatformTarget>
+    <!-- CTP 6.7.13 原生 DLL（64 位 x64）：v6.7.13 提供 64 位版，优先使用 64 位进程 -->
+    <PlatformTarget>x64</PlatformTarget>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
@@ -33,12 +33,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
 
-    <!-- CTP 6.7.11 原生行情 DLL（32 位 x86）：P/Invoke 按 DLL 名在 exe 同目录解析，必须平铺到输出根 -->
+    <!-- CTP 6.7.13 原生行情 DLL（64 位 x64）：P/Invoke 按 DLL 名在 exe 同目录解析，必须平铺到输出根 -->
     <None Include="native\thostmduserapi_se.dll"
           Link="thostmduserapi_se.dll"
           CopyToOutputDirectory="PreserveNewest"
           Visible="false" />
-    <!-- CTP 6.7.11 原生交易 DLL（32 位 x86）：CtpTradingService 通过 ThostTraderApiNative P/Invoke 调用 -->
+    <!-- CTP 6.7.13 原生交易 DLL（64 位 x64）：CtpTradingService 通过 ThostTraderApiNative P/Invoke 调用 -->
     <None Include="native\thosttraderapi_se.dll"
           Link="thosttraderapi_se.dll"
           CopyToOutputDirectory="PreserveNewest"

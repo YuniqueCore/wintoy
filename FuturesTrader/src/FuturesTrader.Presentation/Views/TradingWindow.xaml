@@ -11,7 +11,7 @@
                  Title="合约"
                  Width="600" Height="780"
                  MinWidth="480" MinHeight="540"
-                 Background="#1E1E1E"
+                 Background="{DynamicResource ApplicationBackgroundBrush}"
                  WindowStartupLocation="Manual"
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="Mica"
@@ -23,13 +23,13 @@
         </Grid.RowDefinitions>
 
         <!-- 标题栏：合约名 + 连接状态 + 时间 -->
-        <ui:TitleBar Grid.Row="0" Title="{Binding InstrumentCode}">
+        <ui:TitleBar Grid.Row="0" Title="{Binding InstrumentDisplayName}">
             <ui:TitleBar.Header>
                 <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
                     <TextBlock Text="{Binding ConnectionState}" FontSize="11"
-                               Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock Text="{Binding UpdateTime}" FontSize="11"
-                               Foreground="#9E9E9E" VerticalAlignment="Center"/>
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
                 </StackPanel>
             </ui:TitleBar.Header>
         </ui:TitleBar>
@@ -43,7 +43,7 @@
 
             <!-- 左侧控制面板 -->
             <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
-                          Background="#252526">
+                          Background="{DynamicResource ApplicationSecondaryBackgroundBrush}">
                 <StackPanel Margin="8,4">
 
                     <!-- 1. 行情信息区 -->
@@ -55,9 +55,9 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" Text="{Binding UpdateTime}" FontSize="11"
-                                           Foreground="#FF5050" FontWeight="Bold"/>
+                                           Foreground="{DynamicResource PriceTimeBrush}" FontWeight="Bold"/>
                                 <TextBlock Grid.Column="1" Text="涨跌幅" FontSize="10"
-                                           Foreground="#9E9E9E" HorizontalAlignment="Right"/>
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Right"/>
                             </Grid>
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions>
@@ -65,12 +65,12 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
-                                    <TextBlock Text="成交量" FontSize="10" Foreground="#9E9E9E"/>
-                                    <TextBlock Text="{Binding Volume}" FontSize="11" Foreground="White"/>
+                                    <TextBlock Text="成交量" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding Volume}" FontSize="11" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1">
-                                    <TextBlock Text="持仓量" FontSize="10" Foreground="#9E9E9E"/>
-                                    <TextBlock Text="{Binding OpenInterest}" FontSize="11" Foreground="White"/>
+                                    <TextBlock Text="持仓量" FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                                    <TextBlock Text="{Binding OpenInterest}" FontSize="11" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                 </StackPanel>
                             </Grid>
                             <!-- 空单/多单持仓（红底/蓝底） -->
@@ -79,16 +79,16 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" Background="#3D0000" CornerRadius="3" Padding="6,3" Margin="0,0,2,0">
+                                <Border Grid.Column="0" Background="{DynamicResource ShortPositionBackgroundBrush}" CornerRadius="3" Padding="6,3" Margin="0,0,2,0">
                                     <StackPanel>
-                                        <TextBlock Text="空单" FontSize="9" Foreground="#FFAAAA"/>
-                                        <TextBlock Text="{Binding ShortPosition}" FontSize="13" Foreground="White" FontWeight="Bold"/>
+                                        <TextBlock Text="空单" FontSize="9" Foreground="{DynamicResource ShortPositionTextBrush}"/>
+                                        <TextBlock Text="{Binding ShortPosition}" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="Bold"/>
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="1" Background="#001F3D" CornerRadius="3" Padding="6,3" Margin="2,0,0,0">
+                                <Border Grid.Column="1" Background="{DynamicResource LongPositionBackgroundBrush}" CornerRadius="3" Padding="6,3" Margin="2,0,0,0">
                                     <StackPanel>
                                         <TextBlock Text="多单" FontSize="9" Foreground="#AAAAFF"/>
-                                        <TextBlock Text="{Binding LongPosition}" FontSize="13" Foreground="White" FontWeight="Bold"/>
+                                        <TextBlock Text="{Binding LongPosition}" FontSize="13" Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontWeight="Bold"/>
                                     </StackPanel>
                                 </Border>
                             </Grid>
@@ -104,7 +104,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="左键" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Grid.Column="0" Text="左键" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <ui:NumberBox Grid.Column="1" Value="{Binding ValLeft, Mode=TwoWay}"
                                               ClearButtonEnabled="False" FontSize="12" Minimum="0"/>
                             </Grid>
@@ -113,7 +113,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="右键" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Grid.Column="0" Text="右键" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
                                 <ui:NumberBox Grid.Column="1" Value="{Binding ValRight, Mode=TwoWay}"
                                               ClearButtonEnabled="False" FontSize="12" Minimum="0"/>
                             </Grid>
@@ -159,7 +159,7 @@
                                 <ui:NumberBox Grid.Column="2" Value="{Binding CntrbySprdFctn, Mode=TwoWay}"
                                               ClearButtonEnabled="False" FontSize="11" Margin="2,0,0,0" Minimum="1"/>
                             </Grid>
-                            <TextBlock Text="合约码 / Pt / Fctr" FontSize="9" Foreground="#9E9E9E" Margin="0,2,0,0"/>
+                            <TextBlock Text="合约码 / Pt / Fctr" FontSize="9" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,2,0,0"/>
                         </StackPanel>
                     </ui:Card>
 
@@ -169,7 +169,7 @@
                             <TextBlock Text="交易模式" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <CheckBox Content="OnlyOpen（开仓）" IsChecked="{Binding CbOnlyOpen}" FontSize="11" Margin="0,2"/>
                             <CheckBox Content="M-OrderX（禁用）" IsChecked="{Binding MOrderX}" FontSize="11" Margin="0,2"
-                                      Foreground="#FF6666"/>
+                                      Foreground="{DynamicResource WarningTextBrush}"/>
                         </StackPanel>
                     </ui:Card>
 
@@ -184,7 +184,7 @@
                     </ui:Card>
 
                     <!-- 8. 底部状态区 -->
-                    <ui:Card Margin="0,0,0,4" Padding="8,6" Background="#2D2D2D">
+                    <ui:Card Margin="0,0,0,4" Padding="8,6" Background="{DynamicResource CardBackgroundBrush}">
                         <StackPanel>
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions>
@@ -192,13 +192,13 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" FontSize="11" Foreground="#9E9E9E">
+                                <TextBlock Grid.Column="0" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
                                     <Run Text="撤单 "/><Run Text="{Binding CancelCount, Mode=OneWay}" TextDecorations="None"/><Run Text="K"/>
                                 </TextBlock>
-                                <TextBlock Grid.Column="1" FontSize="11" Foreground="#9E9E9E">
+                                <TextBlock Grid.Column="1" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
                                     <Run Text="C:"/><Run Text="{Binding TradeOpenCount, Mode=OneWay}"/>
                                 </TextBlock>
-                                <TextBlock Grid.Column="2" FontSize="11" Foreground="#9E9E9E">
+                                <TextBlock Grid.Column="2" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
                                     <Run Text="T:"/><Run Text="{Binding TradeCloseCount, Mode=OneWay}"/>
                                 </TextBlock>
                             </Grid>
@@ -208,11 +208,11 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                    <TextBlock Text="持仓 " FontSize="10" Foreground="#9E9E9E" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding TotalPosition}" FontSize="22" FontWeight="Bold" Foreground="White"/>
+                                    <TextBlock Text="持仓 " FontSize="10" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding TotalPosition}" FontSize="22" FontWeight="Bold" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" Text="{Binding OpenCloseMark}"
-                                           FontSize="28" FontWeight="Bold" Foreground="#CC3300"/>
+                                           FontSize="28" FontWeight="Bold" Foreground="{DynamicResource DangerBrush}"/>
                             </Grid>
                         </StackPanel>
                     </ui:Card>

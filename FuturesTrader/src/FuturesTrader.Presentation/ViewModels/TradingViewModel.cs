@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Windows;
@@ -35,6 +36,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     private decimal _priceTick = 1m;
     private bool _disposed;
     private InstrumentWindow _config;
+    private Instrument? _instrument;
 
     public TradingViewModel(
         string instrumentCode,
@@ -86,6 +88,11 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
 
     /// <summary>合约代码（如 ag2608）。</summary>
     public string InstrumentCode { get; }
+
+    /// <summary>窗口标题显示名：合约码 + 期权持续时间 + 组号。
+    /// 期货格式 "ag2608 · 组 3"；期权格式 "ps2609-C-36500 [10天 0807] · 组 3"。
+    /// 合约元数据到达后（OnInstrumentUpdate）刷新。</summary>
+    public string InstrumentDisplayName => BuildDisplayName();
 
     /// <summary>价格梯上下档位数（从 MarketDataOptions 绑定）。</summary>
     public int PriceLadderLevels { get; }
@@ -382,16 +389,40 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         });
     }
 
-    /// <summary>合约元数据回报到达：更新 PriceTick 并同步给 Order VM。</summary>
+    /// <summary>合约元数据回报到达：保存 Instrument、更新 PriceTick 并刷新标题显示。</summary>
     private void OnInstrumentUpdate(Instrument instrument)
     {
         if (_disposed) return;
         MarshalToUi(() =>
         {
             if (_disposed) return;
+            _instrument = instrument;
             _priceTick = instrument.PriceTick > 0 ? instrument.PriceTick : 1m;
             Order.PriceTick = _priceTick;
+            OnPropertyChanged(nameof(InstrumentDisplayName));
         });
+    }
+
+    /// <summary>构造窗口标题显示名：合约码 + 期权后缀 + 组号。</summary>
+    private string BuildDisplayName()
+    {
+        var suffix = _instrument is { IsOptions: true } opt
+            ? FormatOptionsSuffix(opt.ExpireDate, DateTime.Today)
+            : string.Empty;
+        var group = _config.GroupId > 0 ? $" · 组 {_config.GroupId}" : string.Empty;
+        return string.IsNullOrEmpty(suffix)
+            ? $"{InstrumentCode}{group}"
+            : $"{InstrumentCode} {suffix}{group}";
+    }
+
+    /// <summary>期权持续时间后缀：[剩余天数天 到期MMDD]。today 参数化便于单元测试。</summary>
+    internal static string FormatOptionsSuffix(string expireDate, DateTime today)
+    {
+        if (!DateTime.TryParseExact(expireDate, "yyyyMMdd",
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out var expire))
+            return string.Empty;
+        var days = Math.Max(0, (expire - today).Days);
+        return $"[{days}天 {expire:MMdd}]";
     }
 
     /// <summary>确保行情服务已连接并订阅本合约（幂等）。</summary>

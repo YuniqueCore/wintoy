@@ -76,6 +76,9 @@ public partial class App : System.Windows.Application
             .ConfigureServices((ctx, services) =>
             {
                 // ── 配置选项绑定 ──
+                // DataFiles 是业务数据文件路径的唯一源（config.ini/HQAddress.xml/Users.xml/window-groups.json），
+                // 集中管理原本散落在 ConfigFile/WindowLayout/Login 三节的 0527.exe 兼容数据文件路径。
+                services.Configure<DataFileOptions>(ctx.Configuration.GetSection("DataFiles"));
                 services.Configure<ConfigFileOptions>(ctx.Configuration.GetSection("ConfigFile"));
                 services.Configure<WindowLayoutOptions>(ctx.Configuration.GetSection("WindowLayout"));
                 services.Configure<MarketDataOptions>(ctx.Configuration.GetSection("MarketData"));
@@ -84,19 +87,28 @@ public partial class App : System.Windows.Application
                 services.Configure<UiOptions>(ctx.Configuration.GetSection("Ui"));
                 services.Configure<SoundOptions>(ctx.Configuration.GetSection("Sound"));
 
-                // ── 路径绝对化 PostConfigure：将 appsettings.json 中的相对路径基于 exe 目录解析为绝对路径。
+                // ── 路径绝对化 PostConfigure：将相对路径基于 exe 目录（AppContext.BaseDirectory）解析为绝对路径。
                 //    确保无论从哪个工作目录启动（双击/计划任务/命令行），配置/数据/音效/流文件路径都能正确解析。
-                services.PostConfigure<ConfigFileOptions>(o => o.Path = ResolvePath(o.Path));
+                //    业务数据文件路径统一从 DataFiles 节回填到各 Options（保持 Repository/调用方接口不变）。
+                var dataFiles = ctx.Configuration.GetSection("DataFiles");
+                services.PostConfigure<DataFileOptions>(o =>
+                {
+                    o.ConfigIni = ResolvePath(o.ConfigIni);
+                    o.HqAddressXml = ResolvePath(o.HqAddressXml);
+                    o.UsersXml = ResolvePath(o.UsersXml);
+                    o.GroupsJson = ResolvePath(o.GroupsJson);
+                });
+                services.PostConfigure<ConfigFileOptions>(o => o.Path = ResolvePath(dataFiles["ConfigIni"]));
                 services.PostConfigure<WindowLayoutOptions>(o =>
                 {
-                    o.UsersXmlPath = ResolvePath(o.UsersXmlPath);
-                    o.GroupsJsonPath = ResolvePath(o.GroupsJsonPath);
+                    o.UsersXmlPath = ResolvePath(dataFiles["UsersXml"]);
+                    o.GroupsJsonPath = ResolvePath(dataFiles["GroupsJson"]);
                 });
                 services.PostConfigure<LoginOptions>(o =>
                 {
-                    o.HqAddressXmlPath = ResolvePath(o.HqAddressXmlPath);
-                    o.UsersXmlPath = ResolvePath(o.UsersXmlPath);
-                    o.ConfigIniPath = ResolvePath(o.ConfigIniPath);
+                    o.HqAddressXmlPath = ResolvePath(dataFiles["HqAddressXml"]);
+                    o.UsersXmlPath = ResolvePath(dataFiles["UsersXml"]);
+                    o.ConfigIniPath = ResolvePath(dataFiles["ConfigIni"]);
                 });
                 services.PostConfigure<SoundOptions>(o => o.BasePath = ResolvePath(o.BasePath));
                 services.PostConfigure<MarketDataOptions>(o => o.FlowPath = ResolvePath(o.FlowPath));

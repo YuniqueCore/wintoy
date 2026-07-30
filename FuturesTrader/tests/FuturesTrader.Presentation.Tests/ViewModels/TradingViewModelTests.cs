@@ -359,6 +359,59 @@ public class TradingViewModelTests
 
         act.Should().NotThrow("Dispose 应幂等");
     }
+
+    // ── 期权 titlebar 格式化（FormatOptionsSuffix 纯函数）──────────────────
+
+    [Fact]
+    public void FormatOptionsSuffix_calculates_remaining_days_and_mmdd()
+    {
+        // 今天 2026-07-30，到期 2026-08-07 → 剩余 8 天
+        TradingViewModel.FormatOptionsSuffix("20260807", new DateTime(2026, 7, 30))
+            .Should().Be("[8天 0807]");
+    }
+
+    [Fact]
+    public void FormatOptionsSuffix_today_expire_returns_zero_days()
+    {
+        TradingViewModel.FormatOptionsSuffix("20260730", new DateTime(2026, 7, 30))
+            .Should().Be("[0天 0730]");
+    }
+
+    [Fact]
+    public void FormatOptionsSuffix_past_expire_clamps_to_zero()
+    {
+        // 已过期：剩余天数不应为负
+        TradingViewModel.FormatOptionsSuffix("20260729", new DateTime(2026, 7, 30))
+            .Should().Be("[0天 0729]");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("invalid")]
+    [InlineData("2026-08-07")]
+    [InlineData("2026080")]
+    public void FormatOptionsSuffix_invalid_date_returns_empty(string bad)
+    {
+        TradingViewModel.FormatOptionsSuffix(bad, new DateTime(2026, 7, 30))
+            .Should().BeEmpty("无效日期应返回空字符串（不显示后缀）");
+    }
+
+    // ── InstrumentDisplayName 初始值（期货格式，元数据到达前）──────────────
+
+    [Fact]
+    public void InstrumentDisplayName_initial_futures_format_with_group()
+    {
+        var vm = CreateVm(new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 3 });
+        vm.InstrumentDisplayName.Should().Be("ag2608 · 组 3");
+    }
+
+    [Fact]
+    public void InstrumentDisplayName_initial_futures_format_without_group()
+    {
+        // GroupId=0 时不显示组号后缀
+        var vm = CreateVm(new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 0 });
+        vm.InstrumentDisplayName.Should().Be("ag2608");
+    }
 }
 
 /// <summary>

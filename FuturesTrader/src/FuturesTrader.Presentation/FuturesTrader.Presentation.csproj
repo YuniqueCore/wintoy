@@ -21,4 +21,8 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="FuturesTrader.Presentation.Tests" />
+  </ItemGroup>
+
 </Project>

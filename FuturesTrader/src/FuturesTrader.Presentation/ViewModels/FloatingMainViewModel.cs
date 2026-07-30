@@ -1,10 +1,12 @@
 using System.Collections.ObjectModel;
 using System.Reactive.Disposables;
+using System.Reactive.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FuturesTrader.Application;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
+using FuturesTrader.Domain.MarketData;
 using FuturesTrader.Domain.WindowGroups;
 using FuturesTrader.Presentation.WindowHosting;
 using Microsoft.Extensions.Logging;
@@ -34,6 +36,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     private readonly ILoggerFactory _loggerFactory;
     private readonly CompositeDisposable _subscriptions = new();
     private WindowLayout? _layout;
+    private readonly ObservableCollection<Instrument> _allInstruments = new();
     private bool _disposed;
 
     public FloatingMainViewModel(
@@ -75,6 +78,9 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
             AccountSummary = new AccountSummaryViewModel(
                 _session.Trading,
                 _loggerFactory.CreateLogger<AccountSummaryViewModel>());
+            // 订阅合约流，累积全量合约供搜索 autocomplete（CTP 全量查询逐条推送）
+            var instSub = _session.Trading.InstrumentStream.Subscribe(OnInstrumentReceived);
+            _subscriptions.Add(instSub);
         }
     }
 
@@ -120,6 +126,18 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     /// <summary>合约搜索文本（auto-complete-input 输入）。</summary>
     [ObservableProperty] private string _searchText = string.Empty;
 
+    /// <summary>搜索过滤后的合约列表（autocomplete 下拉，最多 20 条）。</summary>
+    public ObservableCollection<Instrument> FilteredInstruments { get; } = new();
+
+    /// <summary>autocomplete Popup 是否打开。</summary>
+    [ObservableProperty] private bool _isSearchPopupOpen;
+
+    /// <summary>autocomplete 列表选中项（选中后触发添加到分组）。</summary>
+    [ObservableProperty] private Instrument? _selectedInstrument;
+
+    /// <summary>当前选中分组号（0=未选中，搜索添加合约时绑定到此组）。</summary>
+    [ObservableProperty] private int _selectedGroupId;
+
     /// <summary>登出事件（Host 订阅后关闭浮动栏 + 回登录页）。</summary>
     public event EventHandler? LogoutRequested;
 
@@ -134,6 +152,8 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
             _layout = await Task.Run(() => _groupService.Load());
             RefreshGroupButtons();
             _logger.LogInformation("浮动栏已加载分组布局：{Count} 窗口", _layout.Windows.Count);
+            // 触发全量合约查询（供搜索 autocomplete，CTP 逐条推送累积到 _allInstruments）
+            _session.Trading?.QueryInstrumentAsync();
         }
         catch (Exception ex)
         {
@@ -151,6 +171,8 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
                 _layout = _groupService.Load();
             }
             _groupService.OpenGroup(_layout, groupId);
+            SelectedGroupId = groupId;
+            foreach (var btn in Groups) btn.IsSelected = btn.Id == groupId;
             RefreshGroupButtons();
         }
         catch (Exception ex)
@@ -193,6 +215,61 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
             _windowHost.CloseGroup(g);
         LogoutRequested?.Invoke(this, EventArgs.Empty);
         await _session.LogoutAsync();
+    }
+
+    /// <summary>SearchText 变更：过滤合约列表（按代码或名称模糊匹配，最多 20 条）。</summary>
+    partial void OnSearchTextChanged(string value)
+    {
+        FilteredInstruments.Clear();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            IsSearchPopupOpen = false;
+            return;
+        }
+        var matches = _allInstruments
+            .Where(i => i.InstrumentId.Contains(value, StringComparison.OrdinalIgnoreCase)
+                     || i.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
+            .Take(20)
+            .ToArray();
+        foreach (var m in matches) FilteredInstruments.Add(m);
+        IsSearchPopupOpen = FilteredInstruments.Count > 0;
+    }
+
+    /// <summary>autocomplete 选中项变更：触发添加到分组命令后重置选中。</summary>
+    partial void OnSelectedInstrumentChanged(Instrument? value)
+    {
+        if (value is not null)
+        {
+            AddInstrumentToGroupCommand.Execute(value);
+            SelectedInstrument = null;
+        }
+    }
+
+    /// <summary>合约流推送：累积到全量缓存（CTP 全量查询逐条推送）。</summary>
+    private void OnInstrumentReceived(Instrument instrument)
+    {
+        _allInstruments.Add(instrument);
+    }
+
+    /// <summary>选中合约后添加到当前分组：AssignWindowToGroup + Save + Open 新窗口。</summary>
+    [RelayCommand]
+    private void AddInstrumentToGroup(Instrument? instrument)
+    {
+        if (instrument is null || SelectedGroupId < 1) return;
+        try
+        {
+            if (_layout is null) _layout = _groupService.Load();
+            _layout = _groupService.AssignWindowToGroup(_layout, instrument.InstrumentId, SelectedGroupId);
+            _groupService.Save(_layout);
+            RefreshGroupButtons();
+            _windowHost.Open(new InstrumentWindow { InstrumentCode = instrument.InstrumentId, GroupId = SelectedGroupId });
+            SearchText = string.Empty;
+            _logger.LogInformation("已添加合约 {Instrument} 到分组 {Group}", instrument.InstrumentId, SelectedGroupId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "添加合约到分组失败");
+        }
     }
 
     /// <summary>刷新分组按钮的窗口数 + 选中态。</summary>

@@ -84,13 +84,20 @@ public sealed class WindowManager : IWindowHost
         var vm = (TradingViewModel)ActivatorUtilities.CreateInstance(
             _services, typeof(TradingViewModel), window, marketData, trading);
 
+        // 新窗口（Left/Top=0 未设置位置）追加到同组已有窗口的最右侧对齐
+        var (left, top) = (window.Left, window.Top);
+        if (left == 0 && top == 0)
+        {
+            (left, top) = ComputeAppendPosition(window.GroupId, Math.Max(window.Width, 320));
+        }
+
         var tradingWindow = new TradingWindow(_keyboard)
         {
             Title = BuildTitle(window),
             Width = Math.Max(window.Width, 320),
             Height = Math.Max(window.Height, 480),
-            Left = window.Left,
-            Top = window.Top,
+            Left = left,
+            Top = top,
             DataContext = vm
         };
 
@@ -126,20 +133,22 @@ public sealed class WindowManager : IWindowHost
             return;
         }
 
-        // 水平紧密排列起始点：屏幕工作区底部上方（浮动栏之上），左对齐
+        // 水平紧密排列 + 整组居中：计算总宽度后从屏幕工作区水平居中起始
         var workArea = SystemParameters.WorkArea;
-        var startX = workArea.Left + 8;
         var startY = workArea.Top + 8;
         var spacing = _uiOptions.CompactSpacing;
-        var currentX = startX;
+        var windowWidths = windows.Select(w => Math.Max(w.Width, 320)).ToArray();
+        var totalWidth = windowWidths.Sum() + (windows.Count - 1) * spacing;
+        var currentX = workArea.Left + Math.Max(8, (workArea.Width - totalWidth) / 2);
 
-        foreach (var w in windows)
+        for (var i = 0; i < windows.Count; i++)
         {
+            var w = windows[i];
             // 首次打开的窗口按紧密排列设置 Left/Top；已打开的保持原位
             if (!IsOpen(w.InstrumentCode))
             {
                 var arranged = w with { Left = (int)currentX, Top = (int)startY };
-                currentX += Math.Max(arranged.Width, 320) + spacing;
+                currentX += windowWidths[i] + spacing;
                 Open(arranged);
             }
             else
@@ -198,6 +207,22 @@ public sealed class WindowManager : IWindowHost
         foreach (var w in toClose) w.Close();
         _logger.LogInformation("已关闭分组 {GroupId} 的 {Count} 个窗口", groupId, toClose.Count);
     });
+
+    /// <summary>计算新窗口追加位置：同组已打开窗口的最右侧；无同组窗口则从屏幕左侧开始。</summary>
+    private (int Left, int Top) ComputeAppendPosition(int groupId, double newWindowWidth)
+    {
+        var workArea = SystemParameters.WorkArea;
+        var spacing = _uiOptions.CompactSpacing;
+        lock (_open)
+        {
+            var rightmost = _open
+                .Where(kv => kv.Value.GroupId == groupId)
+                .Select(kv => kv.Value.Window.Left + kv.Value.Window.Width)
+                .DefaultIfEmpty(workArea.Left + 8 - spacing)
+                .Max();
+            return ((int)(rightmost + spacing), (int)workArea.Top + 8);
+        }
+    }
 
     /// <summary>构造窗口标题：合约码 · 组号（期权场景由 ContractWindowViewModel M4-C 扩展持续时间）。</summary>
     private static string BuildTitle(InstrumentWindow window)

@@ -13,6 +13,20 @@
             <conv:EnumToBoolConverter x:Key="EnumToBool"/>
             <conv:InverseBoolConverter x:Key="InverseBool"/>
             <conv:LatencyToBrushConverter x:Key="LatencyToBrush"/>
+
+            <!-- 业务语义画刷：红蓝持仓/涨跌/警告色，dark/light 通用（业务色不随主题切换）。
+                 通用背景/文字色直接引用 WPF UI 语义画刷（ApplicationBackgroundBrush/CardBackgroundBrush/
+                 TextFillColorPrimaryBrush/TextFillColorSecondaryBrush 等），它们由 ApplicationThemeManager.Apply
+                 随主题自动更新，解决 dark/light 切换时"一半白一半黑"问题。 -->
+            <SolidColorBrush x:Key="ShortPositionBackgroundBrush" Color="#3D0000"/>
+            <SolidColorBrush x:Key="LongPositionBackgroundBrush" Color="#001F3D"/>
+            <SolidColorBrush x:Key="ShortPositionTextBrush" Color="#FFAAAA"/>
+            <SolidColorBrush x:Key="LongPositionTextBrush" Color="#AAAAFF"/>
+            <SolidColorBrush x:Key="PriceTimeBrush" Color="#FF5050"/>
+            <SolidColorBrush x:Key="DangerBrush" Color="#CC3300"/>
+            <SolidColorBrush x:Key="WarningTextBrush" Color="#FF6666"/>
+            <SolidColorBrush x:Key="AccountIdBrush" Color="#FFC060FF"/>
+            <SolidColorBrush x:Key="AccountSummaryBrush" Color="#FFFF4040"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

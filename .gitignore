@@ -89,5 +89,6 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
+REQUIREMENTS.md
 docs/reverse-engineering/*
 docs/design/*

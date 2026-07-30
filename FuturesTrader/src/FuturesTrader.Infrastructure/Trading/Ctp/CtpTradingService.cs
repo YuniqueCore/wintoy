@@ -850,7 +850,12 @@ public sealed class CtpTradingService : ITradingService
             ExchangeId = f.ExchangeID ?? string.Empty,
             Name = f.InstrumentName ?? string.Empty,
             PriceTick = (decimal)f.PriceTick,
-            VolumeMultiple = f.VolumeMultiple
+            VolumeMultiple = f.VolumeMultiple,
+            ProductClass = f.ProductClass,
+            StrikePrice = (decimal)f.StrikePrice,
+            OptionsType = f.OptionsType,
+            ExpireDate = f.ExpireDate ?? string.Empty,
+            CreateDate = f.CreateDate ?? string.Empty
         };
     }
 

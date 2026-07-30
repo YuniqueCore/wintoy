@@ -37,8 +37,8 @@ public partial class FloatingMainWindow : Window
     {
         var workArea = SystemParameters.WorkArea;
         // 仅在首次定位时设置高度（用户 resize 后不再覆盖）
-        if (Height <= 80 || Height > 200)
-            Height = 96;
+        if (Height <= 100 || Height > 240)
+            Height = 120;
         MinWidth = 600;
         if (Width > workArea.Width) Width = workArea.Width;
         Left = workArea.Left + (workArea.Width - Width) / 2;
@@ -65,15 +65,11 @@ public partial class FloatingMainWindow : Window
     }
 
     /// <summary>
-    /// 关闭浮动栏：触发登出流程（ViewModel.LogoutCommand 关闭所有合约窗口 + 断开会话）。
-    /// Host 的 LogoutRequested 事件会隐藏浮动栏 + 重新显示登录页。
-    /// 浮动栏是 DI 单例，不直接 Close（避免实例被释放后无法再次登录）。
+    /// 退出程序：与「登出」语义不同——登出仅断开会话返回登录页，退出则关闭整个应用。
+    /// 触发 <see cref="App.OnExit"/> 自动登出会话（关闭合约窗口 + 断开 CTP）。
     /// </summary>
     private void OnClose(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.LogoutCommand.CanExecute(null))
-        {
-            ViewModel.LogoutCommand.Execute(null);
-        }
+        System.Windows.Application.Current.Shutdown();
     }
 }

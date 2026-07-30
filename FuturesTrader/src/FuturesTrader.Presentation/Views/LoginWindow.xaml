@@ -156,7 +156,7 @@
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12"/>
                             <TextBlock Text="CTP API: 6.7.13"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
-                            <TextBlock Text="进程：x86"
+                            <TextBlock Text="进程：x64"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
