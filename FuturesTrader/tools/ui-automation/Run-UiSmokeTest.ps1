@@ -37,6 +37,22 @@ Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
 
+# Win32 API for foreground window management (SendKeys requires foreground focus)
+$sig = @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32 {
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+    public const int SW_RESTORE = 9;
+}
+"@
+Add-Type -TypeDefinition $sig -Language CSharp -ErrorAction SilentlyContinue
+
 function Get-DesktopRoot {
     return [System.Windows.Automation.AutomationElement]::RootElement
 }
@@ -133,18 +149,89 @@ try {
     if (-not $pwdEl) { throw "PasswordBox not found" }
     Write-Ok "PasswordBox located"
 
-    $pwdEl.SetFocus()
-    Start-Sleep -Milliseconds 300
-    [System.Windows.Forms.SendKeys]::SendWait("{END}+{HOME}{DEL}")
+    # Bring login window to foreground (required for SendKeys to reach the right window)
+    $hwnd = $loginWin.Current.NativeWindowHandle
+    [Win32]::ShowWindow($hwnd, [Win32]::SW_RESTORE) | Out-Null
     Start-Sleep -Milliseconds 100
-    [System.Windows.Forms.SendKeys]::SendWait($Password)
-    Start-Sleep -Milliseconds 500
-    Write-Ok "Password entered"
+    [Win32]::SetForegroundWindow($hwnd) | Out-Null
+    Start-Sleep -Milliseconds 300
 
-    Write-Step "5. Locate and click Login button"
+    # WPF UI PasswordBox exposes as TextBox (ClassName='TextBox'), so it supports ValuePattern.
+    # BUT: ValuePattern.SetValue bypasses WPF's text input pipeline and does NOT trigger
+    # TextChanged/PasswordChanged routed events. So ViewModel.Password stays empty.
+    # Fix: use ValuePattern to set text, then focus + send a dummy keystroke to fire TextChanged.
+    $usedValuePattern = $false
+    try {
+        $vp = $pwdEl.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+        if ($vp) {
+            $vp.SetValue($Password)
+            $usedValuePattern = $true
+            Write-Host "     Used ValuePattern.SetValue"
+        }
+    } catch {
+        Write-Host "     ValuePattern not available, falling back to SendKeys"
+    }
+
+    # Focus the PasswordBox and send a trigger keystroke to fire TextChanged/PasswordChanged
+    $pwdEl.SetFocus()
+    Start-Sleep -Milliseconds 200
+    if ($usedValuePattern) {
+        # Append-then-delete a char to trigger TextChanged → PasswordChanged → OnPasswordChanged
+        [System.Windows.Forms.SendKeys]::SendWait(" ")
+        Start-Sleep -Milliseconds 50
+        [System.Windows.Forms.SendKeys]::SendWait("{BS}")
+        Start-Sleep -Milliseconds 300
+    } else {
+        # Pure SendKeys fallback: clear and type character by character
+        [System.Windows.Forms.SendKeys]::SendWait("{END}+{HOME}{DEL}")
+        Start-Sleep -Milliseconds 100
+        foreach ($ch in $Password.ToCharArray()) {
+            [System.Windows.Forms.SendKeys]::SendWait($ch.ToString())
+            Start-Sleep -Milliseconds 30
+        }
+    }
+
+    Start-Sleep -Milliseconds 800
+
+    # Verify foreground didn't change
+    $fg = [Win32]::GetForegroundWindow()
+    Write-Host "     Foreground HWND: $fg (expected $hwnd)"
+
+    # Read back the password value to confirm it was set
+    $pwdValue = ""
+    if ($usedValuePattern) {
+        try {
+            $vp2 = $pwdEl.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
+            if ($vp2) { $pwdValue = $vp2.Current.Value }
+        } catch {}
+    }
+    Write-Host "     PasswordBox value length: $($pwdValue.Length)"
+
+    # Diagnostic: read StatusMessage (InfoBar.Title) and check Login button state over time
+    $infoBars = Find-DescendantsByType -parent $loginWin -ctrlType ([System.Windows.Automation.ControlType]::Custom) -timeoutSec 2
+    Write-Host "     InfoBar count: $($infoBars.Count)"
+    foreach ($ib in $infoBars) {
+        $nm = ""
+        try { $nm = $ib.Current.Name } catch {}
+        if ($nm) { Write-Host "       InfoBar: '$nm'" }
+    }
+    # Also read all Text elements to find StatusMessage
+    $allTexts = Find-DescendantsByType -parent $loginWin -ctrlType ([System.Windows.Automation.ControlType]::Text) -timeoutSec 2
+    Write-Host "     All Text elements ($($allTexts.Count)):"
+    foreach ($t in $allTexts) {
+        $n = ""
+        try { $n = $t.Current.Name } catch {}
+        if ($n -and $n.Length -gt 0 -and $n.Length -lt 100) { Write-Host "       - '$n'" }
+    }
+
+    Write-Ok "Password entered (method=$(if($usedValuePattern){'ValuePattern'}else{'SendKeys'}))"
+
+    Write-Step "5. Locate and click Login button (poll up to 30s for enabled)"
     $loginBtn = $null
-    $deadline = (Get-Date).AddSeconds(10)
-    while ((Get-Date) -lt $deadline -and -not $loginBtn) {
+    $deadline = (Get-Date).AddSeconds(30)
+    $lastDiag = ""
+    while ((Get-Date) -lt $deadline) {
+        # Re-find the button each iteration (it might have been recreated)
         $btns = Find-DescendantsByType -parent $loginWin -ctrlType ([System.Windows.Automation.ControlType]::Button) -timeoutSec 2
         foreach ($b in $btns) {
             $n = ""
@@ -153,19 +240,49 @@ try {
                 $loginBtn = $b; break
             }
         }
-        if (-not $loginBtn) { Start-Sleep -Milliseconds 400 }
+        if (-not $loginBtn) { Start-Sleep -Milliseconds 500; continue }
+
+        $isEnabled = $false
+        try { $isEnabled = $loginBtn.Current.IsEnabled } catch {}
+        if ($isEnabled) {
+            Write-Ok "Login button is enabled"
+            break
+        }
+
+        # Diagnostic: show what's blocking (every 5s)
+        $now = Get-Date -Format "HH:mm:ss"
+        if ($now -ne $lastDiag) {
+            $lastDiag = $now
+            # Check StatusMessage via InfoBar
+            $statusText = "(unknown)"
+            try {
+                $allTexts2 = Find-DescendantsByType -parent $loginWin -ctrlType ([System.Windows.Automation.ControlType]::Text) -timeoutSec 1
+                foreach ($t in $allTexts2) {
+                    $n = ""
+                    try { $n = $t.Current.Name } catch {}
+                    if ($n -match '测速|就绪|加载|失败|登录') { $statusText = $n; break }
+                }
+            } catch {}
+            Write-Host "     [$now] waiting... button disabled, status='$statusText'"
+        }
+        Start-Sleep -Milliseconds 1000
     }
+
     if (-not $loginBtn) { throw "Login button not found" }
-    Write-Ok "Login button found"
 
     $isEnabled = $false
     try { $isEnabled = $loginBtn.Current.IsEnabled } catch {}
-    Write-Host "     Button IsEnabled=$isEnabled"
     if (-not $isEnabled) {
-        Write-Warn2 "Login button disabled, waiting 5s..."
-        Start-Sleep -Seconds 5
-        try { $isEnabled = $loginBtn.Current.IsEnabled } catch {}
-        Write-Host "     Button IsEnabled=$isEnabled (after wait)"
+        Write-Err "Login button still disabled after 30s. Dumping diagnostics..."
+        # Dump all text elements for debugging
+        $allTexts3 = Find-DescendantsByType -parent $loginWin -ctrlType ([System.Windows.Automation.ControlType]::Text) -timeoutSec 2
+        Write-Host "     Text elements:"
+        foreach ($t in $allTexts3) {
+            $n = ""
+            try { $n = $t.Current.Name } catch {}
+            if ($n) { Write-Host "       - '$n'" }
+        }
+        throw "Login button disabled after 30s timeout"
     }
 
     Invoke-Button $loginBtn

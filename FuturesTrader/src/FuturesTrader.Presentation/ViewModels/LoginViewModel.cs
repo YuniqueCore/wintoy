@@ -110,8 +110,6 @@ public partial class LoginViewModel : ObservableObject
             // 加载行情地址
             var hqAddresses = _hqRepo.Load(_loginOptions.HqAddressXmlPath);
             MarketAddresses = new ObservableCollection<HqAddressEntry>(hqAddresses);
-            if (MarketAddresses.Count > 0)
-                SelectedMarketAddress = MarketAddresses[0];
 
             // 加载账号
             var accounts = _accountRepo.Load(_loginOptions.UsersXmlPath);
@@ -129,12 +127,18 @@ public partial class LoginViewModel : ObservableObject
                 }];
             }
             Accounts = new ObservableCollection<AccountEntry>(accounts);
-            if (Accounts.Count > 0)
-                SelectedAccount = Accounts[0];
 
             StatusMessage = $"已加载 {MarketAddresses.Count} 个行情地址，{Accounts.Count} 个账号";
             _logger.LogInformation("登录页数据加载完成：{MdCount} 行情地址，{AcctCount} 账号",
                 MarketAddresses.Count, Accounts.Count);
+
+            // 关键：替换 ObservableCollection 后 DataGrid/ListBox 的 TwoWay 绑定会先把
+            // SelectedItem 清成 null（旧选中项已不在新集合中），覆盖 ViewModel 赋值。
+            // 必须等 DataGrid 完成容器生成后再设置默认选中。用 ContextIdle 优先级
+            // （低于 DataBind/Render），确保绑定与渲染都完成后再赋值。
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(
+                ApplyDefaultSelection,
+                System.Windows.Threading.DispatcherPriority.ContextIdle);
 
             // 自动测速
             await ProbeAsync();
@@ -143,6 +147,25 @@ public partial class LoginViewModel : ObservableObject
         {
             _logger.LogError(ex, "加载数据失败");
             StatusMessage = $"加载失败：{ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// 应用默认选中：行情地址选第一个、账号选第一个。
+    /// 在 DataGrid/ListBox 容器生成完毕后（ContextIdle 优先级）调用，
+    /// 避免 TwoWay 绑定在替换 ObservableCollection 时清空 SelectedItem 覆盖赋值。
+    /// </summary>
+    private void ApplyDefaultSelection()
+    {
+        if (SelectedMarketAddress is null && MarketAddresses.Count > 0)
+        {
+            SelectedMarketAddress = MarketAddresses[0];
+            _logger.LogInformation("默认选中行情地址：{Name}", SelectedMarketAddress.Name);
+        }
+        if (SelectedAccount is null && Accounts.Count > 0)
+        {
+            SelectedAccount = Accounts[0];
+            _logger.LogInformation("默认选中账号：{UserId}", SelectedAccount.UserId);
         }
     }
 
@@ -160,6 +183,8 @@ public partial class LoginViewModel : ObservableObject
             .Select(a => (a.Host, a.Port))
             .ToList();
 
+        _logger.LogInformation("开始测速 {Count} 个地址（超时 {Timeout}ms）", endpoints.Count, timeout.TotalMilliseconds);
+
         await _probeService.ProbeAllAsync(
             endpoints, timeout,
             result => System.Windows.Application.Current.Dispatcher.InvokeAsync(() => UpdateMarketAddressLatency(result)));
@@ -168,6 +193,9 @@ public partial class LoginViewModel : ObservableObject
         State = new LoginState.Idle();
         var okCount = MarketAddresses.Count(a => a.ProbeSuccess);
         StatusMessage = $"测速完成：{okCount}/{MarketAddresses.Count} 可达";
+        _logger.LogInformation("测速完成：{Ok}/{Total} 可达，SelectedMarket={HasMd} SelectedAccount={HasAcct} Password={HasPwd}",
+            okCount, MarketAddresses.Count,
+            SelectedMarketAddress is not null, SelectedAccount is not null, !string.IsNullOrEmpty(Password));
 
         // 同时测当前账号交易地址
         await ProbeTradingAddressAsync();
@@ -239,19 +267,24 @@ public partial class LoginViewModel : ObservableObject
         TradingAddressLatency = result.Success ? result.RttMs : null;
     }
 
-    /// <summary>更新行情地址列表中匹配条目的延迟。</summary>
+    /// <summary>
+    /// 更新行情地址列表中匹配条目的延迟。
+    /// <para>
+    /// <see cref="HqAddressEntry"/> 是 INPC class（非 record），直接改 LatencyMs/ProbeSuccess 属性即可
+    /// 触发 DataGrid 延迟列刷新，<b>无需替换集合项</b> → SelectedItem 引用不变 → 选中永不丢失。
+    /// 这彻底修复了"测速回调在用户输入密码期间到达、替换实例导致 DataGrid 选中被清空"的竞态：
+    /// 旧方案用 with 替换实例后立即恢复 SelectedMarketAddress，但 DataGrid 处理 CollectionChanged
+    /// 时同步把 SelectedItem 置 null，TwoWay 绑定异步回写会覆盖恢复赋值。
+    /// </para>
+    /// </summary>
     private void UpdateMarketAddressLatency(ProbeResult result)
     {
-        for (var i = 0; i < MarketAddresses.Count; i++)
+        foreach (var addr in MarketAddresses)
         {
-            var addr = MarketAddresses[i];
             if (addr.Host == result.Host && addr.Port == result.Port)
             {
-                MarketAddresses[i] = addr with
-                {
-                    LatencyMs = result.RttMs,
-                    ProbeSuccess = result.Success
-                };
+                addr.LatencyMs = result.RttMs;
+                addr.ProbeSuccess = result.Success;
                 break;
             }
         }

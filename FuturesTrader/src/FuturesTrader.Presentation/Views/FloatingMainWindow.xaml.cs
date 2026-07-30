@@ -1,13 +1,15 @@
 using System.Windows;
+using System.Windows.Input;
 using FuturesTrader.Presentation.ViewModels;
 
 namespace FuturesTrader.Presentation.Views;
 
 /// <summary>
-/// 浮动工具栏窗口（桌面底部长条）：WindowStyle=None + Topmost 绑定 + 底部 WorkArea 定位。
+/// 浮动工具栏窗口（桌面底部长条）：WindowStyle=None + 拖动 + ResizeGrip + 系统按钮。
 /// <para>
-/// 定位策略：启动时贴屏幕工作区底部居中，高度约 96px（对齐 0527.exe 底部长条）。
-/// 高度由 <see cref="Window.Height"/> 固定，不随内容变化。
+/// 拖动：根 Border 的 MouseLeftButtonDown → <see cref="DragMove"/>（WPF 自动过滤 Button 等交互控件的点击，
+/// 只有空白区域才触发拖动）。
+/// 关闭/最小化：右下角系统按钮区提供 Dismiss/Subtract 图标按钮。
 /// </para>
 /// </summary>
 public partial class FloatingMainWindow : Window
@@ -34,10 +36,44 @@ public partial class FloatingMainWindow : Window
     public void PositionAtBottom()
     {
         var workArea = SystemParameters.WorkArea;
-        Height = 96;
-        MinWidth = 900;
+        // 仅在首次定位时设置高度（用户 resize 后不再覆盖）
+        if (Height <= 80 || Height > 200)
+            Height = 96;
+        MinWidth = 600;
         if (Width > workArea.Width) Width = workArea.Width;
         Left = workArea.Left + (workArea.Width - Width) / 2;
         Top = workArea.Bottom - Height - 4;
+    }
+
+    /// <summary>
+    /// 拖动浮动栏：在根 Border 的空白区域按下鼠标左键时调用 <see cref="Window.DragMove"/>。
+    /// WPF 的路由事件机制保证 Button/ToggleButton 等交互控件会标记 e.Handled=true，
+    /// 不会冒泡到 Border，因此按钮点击不会被误判为拖动。
+    /// </summary>
+    private void OnDragMove(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton == MouseButtonState.Pressed)
+        {
+            try { DragMove(); } catch { /* DragMove 在某些状态下会抛 InvalidOperationException，忽略 */ }
+        }
+    }
+
+    /// <summary>最小化浮动栏到任务栏。</summary>
+    private void OnMinimize(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    /// <summary>
+    /// 关闭浮动栏：触发登出流程（ViewModel.LogoutCommand 关闭所有合约窗口 + 断开会话）。
+    /// Host 的 LogoutRequested 事件会隐藏浮动栏 + 重新显示登录页。
+    /// 浮动栏是 DI 单例，不直接 Close（避免实例被释放后无法再次登录）。
+    /// </summary>
+    private void OnClose(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel.LogoutCommand.CanExecute(null))
+        {
+            ViewModel.LogoutCommand.Execute(null);
+        }
     }
 }

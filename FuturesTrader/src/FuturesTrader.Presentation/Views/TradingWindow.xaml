@@ -87,7 +87,7 @@
                                 </Border>
                                 <Border Grid.Column="1" Background="#001F3D" CornerRadius="3" Padding="6,3" Margin="2,0,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="多单" FontSize="9" Foreground="#AAA AFF"/>
+                                        <TextBlock Text="多单" FontSize="9" Foreground="#AAAAFF"/>
                                         <TextBlock Text="{Binding LongPosition}" FontSize="13" Foreground="White" FontWeight="Bold"/>
                                     </StackPanel>
                                 </Border>
@@ -193,13 +193,13 @@
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" FontSize="11" Foreground="#9E9E9E">
-                                    <Run Text="撤单 "/><Run Text="{Binding CancelCount}" TextDecorations="None"/><Run Text="K"/>
+                                    <Run Text="撤单 "/><Run Text="{Binding CancelCount, Mode=OneWay}" TextDecorations="None"/><Run Text="K"/>
                                 </TextBlock>
                                 <TextBlock Grid.Column="1" FontSize="11" Foreground="#9E9E9E">
-                                    <Run Text="C:"/><Run Text="{Binding TradeOpenCount}"/>
+                                    <Run Text="C:"/><Run Text="{Binding TradeOpenCount, Mode=OneWay}"/>
                                 </TextBlock>
                                 <TextBlock Grid.Column="2" FontSize="11" Foreground="#9E9E9E">
-                                    <Run Text="T:"/><Run Text="{Binding TradeCloseCount}"/>
+                                    <Run Text="T:"/><Run Text="{Binding TradeCloseCount, Mode=OneWay}"/>
                                 </TextBlock>
                             </Grid>
                             <Grid>

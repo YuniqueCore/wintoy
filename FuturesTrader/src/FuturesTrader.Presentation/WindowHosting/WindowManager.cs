@@ -25,6 +25,7 @@ namespace FuturesTrader.Presentation.WindowHosting;
 public sealed class WindowManager : IWindowHost
 {
     private readonly IServiceProvider _services;
+    private readonly ISessionService _session;
     private readonly IKeyboardOperationService _keyboard;
     private readonly GroupSynchronizationCoordinator _sync;
     private readonly UiOptions _uiOptions;
@@ -35,12 +36,14 @@ public sealed class WindowManager : IWindowHost
 
     public WindowManager(
         IServiceProvider services,
+        ISessionService session,
         IKeyboardOperationService keyboard,
         GroupSynchronizationCoordinator sync,
         IOptions<UiOptions> uiOptions,
         ILogger<WindowManager> logger)
     {
         _services = services;
+        _session = session;
         _keyboard = keyboard;
         _sync = sync;
         _uiOptions = uiOptions.Value;
@@ -71,8 +74,15 @@ public sealed class WindowManager : IWindowHost
             }
         }
 
+        // IMarketDataService / ITradingService 是会话级实例（由 SessionService 持有，不在 DI 中）。
+        // 必须显式传递给 ActivatorUtilities，否则无法解析。
+        var marketData = _session.MarketData
+            ?? throw new InvalidOperationException("行情服务未初始化（未登录或已登出）");
+        var trading = _session.Trading
+            ?? throw new InvalidOperationException("交易服务未初始化（未登录或已登出）");
+
         var vm = (TradingViewModel)ActivatorUtilities.CreateInstance(
-            _services, typeof(TradingViewModel), window);
+            _services, typeof(TradingViewModel), window, marketData, trading);
 
         var tradingWindow = new TradingWindow(_keyboard)
         {

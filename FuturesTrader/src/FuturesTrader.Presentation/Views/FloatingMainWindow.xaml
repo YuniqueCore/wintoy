@@ -9,12 +9,12 @@
         d:DataContext="{d:DesignInstance Type=vm:FloatingMainViewModel}"
         Title="浮动工具栏"
         WindowStyle="None"
-        ResizeMode="CanMinimize"
+        ResizeMode="CanResizeWithGrip"
         ShowInTaskbar="True"
         Topmost="{Binding AlwaysOnTop, Mode=OneWay}"
         Background="{DynamicResource ApplicationBackgroundBrush}"
         AllowsTransparency="False"
-        MinWidth="900" Width="1100">
+        MinWidth="600" MinHeight="80" Width="1100" Height="96">
     <Window.Resources>
         <!-- 分组按钮样式：紧凑方块，选中高亮 -->
         <Style x:Key="GroupButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -48,7 +48,8 @@
         </Style>
     </Window.Resources>
 
-    <Border BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="1" CornerRadius="0">
+    <Border BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="1" CornerRadius="0"
+            MouseLeftButtonDown="OnDragMove">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -149,7 +150,7 @@
 
             <!-- 第三行：资金摘要（红色文字）+ 右侧系统按钮 -->
             <DockPanel Grid.Row="2" Margin="6,2">
-                <!-- 右侧系统按钮：置顶/同步/设置/登出 -->
+                <!-- 右侧系统按钮：置顶/同步/设置/最小化/关闭/登出 -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                     <ui:Button x:Name="TopmostButton" Icon="{ui:SymbolIcon Pin24}" ToolTip="切换置顶"
                                Command="{Binding ToggleTopmostCommand}" Padding="6,3"/>
@@ -157,6 +158,11 @@
                                Command="{Binding ToggleSyncModeCommand}" Padding="6,3" Margin="2,0,0,0"/>
                     <ui:Button Icon="{ui:SymbolIcon Settings24}" ToolTip="设置"
                                Command="{Binding OpenSettingsCommand}" Padding="6,3" Margin="2,0,0,0"/>
+                    <ui:Button Icon="{ui:SymbolIcon ArrowMinimize24}" ToolTip="最小化"
+                               Click="OnMinimize" Padding="6,3" Margin="2,0,0,0"/>
+                    <ui:Button Icon="{ui:SymbolIcon Dismiss24}" ToolTip="关闭浮动栏（登出）"
+                               Click="OnClose" Padding="6,3" Margin="2,0,0,0"
+                               Appearance="Danger"/>
                     <ui:Button Icon="{ui:SymbolIcon ArrowExit20}" ToolTip="登出"
                                Command="{Binding LogoutCommand}" Padding="6,3" Margin="2,0,0,0"/>
                 </StackPanel>
