@@ -1,0 +1,108 @@
+<UserControl x:Class="FuturesTrader.Presentation.Controls.PriceListControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:FuturesTrader.Presentation.Controls"
+             xmlns:marketData="clr-namespace:FuturesTrader.Domain.MarketData;assembly=FuturesTrader.Domain"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="360"
+             Background="#1E1E1E"
+             Focusable="True"
+             PreviewMouseWheel="OnPreviewMouseWheel">
+    <UserControl.Resources>
+        <!-- 5 列按 PriceListRatios=10,25,30,25,10 比例（档位/买量/价格/卖量/价差） -->
+        <GridLength x:Key="ColRatio1">1*</GridLength>
+        <GridLength x:Key="ColRatio2">2.5*</GridLength>
+        <GridLength x:Key="ColRatio3">3*</GridLength>
+        <GridLength x:Key="ColRatio4">2.5*</GridLength>
+        <GridLength x:Key="ColRatio5">1*</GridLength>
+
+        <!-- 行模板：买卖量按颜色区分（红卖绿买，对齐国内期货习惯） -->
+        <DataTemplate x:Key="AskRowTemplate" DataType="marketData:PriceLevel">
+            <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{StaticResource ColRatio1}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio2}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio3}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio4}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio5}"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="" />
+                <TextBlock Grid.Column="1" Text="" />
+                <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="#E53935" FontWeight="Bold"/>
+                <TextBlock Grid.Column="3" Text="{Binding AskVolume}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="#E53935"/>
+                <TextBlock Grid.Column="4" Text="" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="BidRowTemplate" DataType="marketData:PriceLevel">
+            <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{StaticResource ColRatio1}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio2}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio3}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio4}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio5}"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="" />
+                <TextBlock Grid.Column="1" Text="{Binding BidVolume}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="#43A047"/>
+                <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Foreground="#43A047" FontWeight="Bold"/>
+                <TextBlock Grid.Column="3" Text="" />
+                <TextBlock Grid.Column="4" Text="" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CenterRowTemplate" DataType="marketData:PriceLevel">
+            <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                  Background="#FFC107">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{StaticResource ColRatio1}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio2}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio3}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio4}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio5}"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="►" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
+                <TextBlock Grid.Column="1" Text="{Binding BidVolume}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
+                <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           FontWeight="Bold" FontSize="14"/>
+                <TextBlock Grid.Column="3" Text="{Binding AskVolume}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
+                <TextBlock Grid.Column="4" Text="" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- 行模板选择器：中心行用高亮模板，上方卖盘用红模板，下方买盘用绿模板 -->
+        <local:PriceLevelTemplateSelector x:Key="RowTemplateSelector"
+                                          AskTemplate="{StaticResource AskRowTemplate}"
+                                          BidTemplate="{StaticResource BidRowTemplate}"
+                                          CenterTemplate="{StaticResource CenterRowTemplate}"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <ScrollViewer x:Name="PriceScrollViewer"
+                      VerticalScrollBarVisibility="Hidden"
+                      HorizontalScrollBarVisibility="Hidden">
+            <ItemsControl x:Name="PriceItemsControl"
+                          ItemsSource="{Binding PriceLadder.Rows, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                          ItemTemplateSelector="{StaticResource RowTemplateSelector}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

@@ -2,8 +2,13 @@ using System.Windows;
 using FuturesTrader.Application;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
+using FuturesTrader.Domain.MarketData;
+using FuturesTrader.Infrastructure.MarketData;
+using FuturesTrader.Infrastructure.MarketData.Ctp;
 using FuturesTrader.Infrastructure.Persistence;
 using FuturesTrader.Infrastructure.Persistence.WindowGroups;
+using FuturesTrader.Presentation.Abstractions;
+using FuturesTrader.Presentation.Services;
 using FuturesTrader.Presentation.ViewModels;
 using FuturesTrader.Presentation.Views;
 using FuturesTrader.Presentation.WindowHosting;
@@ -12,6 +17,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 namespace FuturesTrader.Host;
@@ -64,12 +71,38 @@ public partial class App : System.Windows.Application
                 services.AddSingleton<MainViewModel>();
                 services.AddSingleton<MainWindow>();
 
-                // 窗口分组管理：仓库(Users.xml+window-groups.json) + 窗口宿主(桩) + 编排服务 + 段 VM
+                // 窗口分组管理：仓库(Users.xml+window-groups.json) + 窗口宿主 + 编排服务 + 段 VM
                 services.Configure<WindowLayoutOptions>(ctx.Configuration.GetSection("WindowLayout"));
                 services.AddSingleton<IWindowGroupRepository, UsersXmlWindowGroupRepository>();
-                services.AddSingleton<IWindowHost, StubWindowHost>();
+                // IWindowHost 真实实现：WindowManager 用 TradingWindow 替换 StubWindowHost 占位
+                services.AddSingleton<IWindowHost, WindowManager>();
                 services.AddSingleton<WindowGroupService>();
                 services.AddSingleton<WindowGroupBarViewModel>();
+
+                // 行情双源：MarketDataOptions.Provider 决定装配 Mock 或 Ctp（工厂模式）
+                services.Configure<MarketDataOptions>(ctx.Configuration.GetSection("MarketData"));
+                services.AddSingleton<IMarketDataService>(sp =>
+                {
+                    var opts = sp.GetRequiredService<IOptions<MarketDataOptions>>().Value;
+                    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+                    if (opts.Provider == MarketDataProvider.Ctp)
+                    {
+                        // CTP 直连：thostmduserapi_se.dll（32 位，需 Host 进程 x86）
+                        Log.Information("CTP 行情实现启用：Front={Front} Flow={Flow}",
+                            opts.FrontAddress, opts.FlowPath);
+                        return new CtpMarketDataService(
+                            opts,
+                            loggerFactory.CreateLogger<CtpMarketDataService>());
+                    }
+                    return new SimulatedMarketDataService(
+                        opts.MockTickIntervalMs,
+                        loggerFactory.CreateLogger<SimulatedMarketDataService>());
+                });
+
+                // 声音/键盘单例：CTP 回调触发 Play/快捷键集中派发
+                services.Configure<SoundOptions>(ctx.Configuration.GetSection("Sound"));
+                services.AddSingleton<ISoundService, SoundService>();
+                services.AddSingleton<IKeyboardOperationService, KeyboardOperationService>();
 
                 // MCP 工具+HTTP 传输注册（仅启用时；MapMcp 端点在下方 ConfigureWebHostDefaults 配置）
                 if (mcpEnabled)

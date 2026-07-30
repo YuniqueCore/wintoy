@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <UseWPF>true</UseWPF>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
@@ -22,8 +23,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\FuturesTrader.Domain\FuturesTrader.Domain.csproj" />
-    <ProjectReference Include="..\..\src\FuturesTrader.Infrastructure\FuturesTrader.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\FuturesTrader.Application\FuturesTrader.Application.csproj" />
+    <ProjectReference Include="..\..\src\FuturesTrader.Presentation\FuturesTrader.Presentation.csproj" />
   </ItemGroup>
 
 </Project>

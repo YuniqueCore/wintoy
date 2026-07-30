@@ -3,9 +3,12 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- CTP thostmduserapi_se.dll 是 32 位，进程必须 x86 -->
+    <PlatformTarget>x86</PlatformTarget>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
@@ -29,6 +32,11 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- CTP 6.7.11 原生行情 DLL（32 位 x86）：P/Invoke 在运行时按 DLL 名解析，必须与 exe 同目录或在 PATH -->
+    <None Include="D:\work\projs\futures\qihuo-software\thostmduserapi_se.dll"
+          Link="thostmduserapi_se.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
   </ItemGroup>
 
 </Project>
