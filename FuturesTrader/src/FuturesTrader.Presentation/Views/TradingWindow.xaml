@@ -9,13 +9,25 @@
                  mc:Ignorable="d"
                  d:DataContext="{d:DesignInstance Type=vm:TradingViewModel}"
                  Title="合约"
-                 Width="600" Height="780"
-                 MinWidth="480" MinHeight="540"
+                 Width="360" Height="780"
+                 MinWidth="320" MinHeight="540"
                  Background="{DynamicResource ApplicationBackgroundBrush}"
                  WindowStartupLocation="Manual"
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="Mica"
                  KeyDown="OnWindowKeyDown">
+    <ui:FluentWindow.Resources>
+        <!-- 卡片 hover 样式：覆盖全窗口所有 ui:Card，鼠标移上去时背景切换到 CardHoverBackgroundBrush
+             （DynamicResource 跟随主题），前景色不变以保证可读性。
+             BasedOn 默认 WPF UI 卡片样式以保留圆角/阴影等外观。 -->
+        <Style TargetType="ui:Card" BasedOn="{StaticResource {x:Type ui:Card}}">
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </ui:FluentWindow.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -34,20 +46,21 @@
             </ui:TitleBar.Header>
         </ui:TitleBar>
 
-        <!-- 主体：左控制面板(MinWidth=160, *弹性) + 右价格梯 -->
+        <!-- 主体：左控制面板(160, 紧凑) + 右价格梯(200, 固定宽度)
+             总宽 360 ≈ 老软件合约窗口 60% width，可在一屏排列更多合约窗口。 -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" MinWidth="160"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="160" MinWidth="140"/>
+                <ColumnDefinition Width="200"/>
             </Grid.ColumnDefinitions>
 
             <!-- 左侧控制面板 -->
             <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
                           Background="{DynamicResource ApplicationSecondaryBackgroundBrush}">
-                <StackPanel Margin="8,4">
+                <StackPanel Margin="4,2">
 
                     <!-- 1. 行情信息区 -->
-                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                    <ui:Card Margin="0,0,0,4" Padding="6,4">
                         <StackPanel>
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions>
@@ -96,7 +109,7 @@
                     </ui:Card>
 
                     <!-- 2. 挂单数量 -->
-                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                    <ui:Card Margin="0,0,0,4" Padding="6,4">
                         <StackPanel>
                             <TextBlock Text="挂单数量" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <Grid Margin="0,0,0,2">
@@ -121,7 +134,7 @@
                     </ui:Card>
 
                     <!-- 3. 挂单模式 A/B -->
-                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                    <ui:Card Margin="0,0,0,4" Padding="6,4">
                         <StackPanel>
                             <TextBlock Text="挂单模式" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <StackPanel Orientation="Horizontal">
@@ -134,7 +147,7 @@
                     </ui:Card>
 
                     <!-- 4. 下单限制 -->
-                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                    <ui:Card Margin="0,0,0,4" Padding="6,4">
                         <StackPanel>
                             <TextBlock Text="下单限制" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <CheckBox Content="Chg Nearby" IsChecked="{Binding CbNearby}" FontSize="11" Margin="0,2"/>
@@ -143,14 +156,14 @@
                     </ui:Card>
 
                     <!-- 5. 价差锁定 -->
-                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                    <ui:Card Margin="0,0,0,4" Padding="6,4">
                         <StackPanel>
                             <TextBlock Text="价差锁定" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <Grid Margin="0,0,0,2">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" MinWidth="48"/>
-                                    <ColumnDefinition Width="*" MinWidth="48"/>
                                     <ColumnDefinition Width="*" MinWidth="40"/>
+                                    <ColumnDefinition Width="*" MinWidth="40"/>
+                                    <ColumnDefinition Width="*" MinWidth="32"/>
                                 </Grid.ColumnDefinitions>
                                 <ui:TextBox Grid.Column="0" Text="{Binding CntrbySprdId, Mode=TwoWay}"
                                             PlaceholderText="合约" FontSize="11" Margin="0,0,2,0"/>
@@ -164,7 +177,7 @@
                     </ui:Card>
 
                     <!-- 6. 开平仓 / M-OrderX -->
-                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                    <ui:Card Margin="0,0,0,4" Padding="6,4">
                         <StackPanel>
                             <TextBlock Text="交易模式" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <CheckBox Content="OnlyOpen（开仓）" IsChecked="{Binding CbOnlyOpen}" FontSize="11" Margin="0,2"/>
@@ -174,7 +187,7 @@
                     </ui:Card>
 
                     <!-- 7. 其他开关 -->
-                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                    <ui:Card Margin="0,0,0,4" Padding="6,4">
                         <StackPanel>
                             <TextBlock Text="辅助开关" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <CheckBox Content="涨跌停锁" IsChecked="{Binding CbZdtLock}" FontSize="11" Margin="0,2"/>
@@ -184,7 +197,7 @@
                     </ui:Card>
 
                     <!-- 8. 底部状态区 -->
-                    <ui:Card Margin="0,0,0,4" Padding="8,6" Background="{DynamicResource CardBackgroundBrush}">
+                    <ui:Card Margin="0,0,0,2" Padding="6,4" Background="{DynamicResource CardBackgroundBrush}">
                         <StackPanel>
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions>

@@ -21,10 +21,21 @@
         <GridLength x:Key="ColRatio5">1*</GridLength>
 
         <!-- 空单挂单区行模板（上方）：挂单数 + 买量(空) + 价格 + 卖量 + 价差(空)。
-             全部颜色用 DynamicResource，主题切换时 ThemeService 改 App.Resources 即可生效。 -->
+             全部颜色用 DynamicResource，主题切换时 ThemeService 改 App.Resources 即可生效。
+             行 Grid 加 IsMouseOver 触发器，hover 时切换到 PriceListAskRowHoverBackgroundBrush
+             （仅改背景，前景色不变，不影响数字可读性）。 -->
         <DataTemplate x:Key="AskRowTemplate" DataType="marketData:PriceLevel">
             <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
                   Background="{DynamicResource PriceListAskRowBackgroundBrush}">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource PriceListAskRowHoverBackgroundBrush}"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="{StaticResource ColRatio1}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio2}"/>
@@ -66,6 +77,15 @@
         <DataTemplate x:Key="BidRowTemplate" DataType="marketData:PriceLevel">
             <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
                   Background="{DynamicResource PriceListBidRowBackgroundBrush}">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource PriceListBidRowHoverBackgroundBrush}"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="{StaticResource ColRatio1}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio2}"/>
@@ -105,6 +125,15 @@
         <DataTemplate x:Key="CenterRowTemplate" DataType="marketData:PriceLevel">
             <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
                   Background="{DynamicResource PriceListCenterRowBackgroundBrush}">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource PriceListCenterRowHoverBackgroundBrush}"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="{StaticResource ColRatio1}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio2}"/>
