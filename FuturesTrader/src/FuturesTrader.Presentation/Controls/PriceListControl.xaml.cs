@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using FuturesTrader.Domain.MarketData;
 
 namespace FuturesTrader.Presentation.Controls;
@@ -58,9 +59,27 @@ public sealed partial class PriceListControl : UserControl
             typeof(PriceListControl),
             new PropertyMetadata(3));
 
+    /// <summary>
+    /// 价位点击路由事件：点击价格梯某行时冒泡，携带该行价格。
+    /// 对齐 0527.exe TPointWindow：点击价位 → 设置下单价格（LimitPrice）。
+    /// </summary>
+    public static readonly RoutedEvent PriceSelectedEvent =
+        EventManager.RegisterRoutedEvent(
+            nameof(PriceSelected),
+            RoutingStrategy.Bubble,
+            typeof(EventHandler<PriceSelectedEventArgs>),
+            typeof(PriceListControl));
+
     public PriceListControl()
     {
         InitializeComponent();
+    }
+
+    /// <summary>价位被点击时触发（携带该行价格，供宿主窗口设置下单 LimitPrice）。</summary>
+    public event EventHandler<PriceSelectedEventArgs> PriceSelected
+    {
+        add => AddHandler(PriceSelectedEvent, value);
+        remove => RemoveHandler(PriceSelectedEvent, value);
     }
 
     /// <summary>价格梯数据（行情刷新时整体替换）。</summary>
@@ -126,4 +145,35 @@ public sealed partial class PriceListControl : UserControl
         var scroll = PriceScrollViewer;
         scroll.ScrollToVerticalOffset(scroll.VerticalOffset + rows * RowHeight);
     }
+
+    /// <summary>
+    /// 价格梯行点击：从命中元素向上遍历视觉树找到 <see cref="PriceLevel"/> DataContext，
+    /// 触发 <see cref="PriceSelectedEvent"/> 冒泡。对齐 0527.exe TPointWindow 点价设价交互。
+    /// </summary>
+    private void OnPriceRowClick(object sender, MouseButtonEventArgs e)
+    {
+        var source = e.OriginalSource as DependencyObject;
+        while (source is not null && !ReferenceEquals(source, this))
+        {
+            if (source is FrameworkElement fe && fe.DataContext is PriceLevel level)
+            {
+                RaiseEvent(new PriceSelectedEventArgs(PriceSelectedEvent, this)
+                {
+                    Price = level.Price
+                });
+                e.Handled = true;
+                return;
+            }
+            source = VisualTreeHelper.GetParent(source);
+        }
+    }
+}
+
+/// <summary>价位点击事件参数：携带被点击行的价格。</summary>
+public sealed class PriceSelectedEventArgs : RoutedEventArgs
+{
+    public PriceSelectedEventArgs(RoutedEvent routedEvent, object source) : base(routedEvent, source) { }
+
+    /// <summary>被点击行的价格（已按 PriceTick 对齐）。</summary>
+    public decimal Price { get; init; }
 }

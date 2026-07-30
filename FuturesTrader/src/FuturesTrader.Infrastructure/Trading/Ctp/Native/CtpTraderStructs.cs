@@ -471,3 +471,326 @@ public struct CThostFtdcSettlementInfoConfirmField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 4)]
     public string CurrencyID;
 }
+
+// ===== 查询家族结构体（CTP 6.7.x，字段顺序严格按 ThostFtdcUserApiStruct.h） =====
+// 6.7.x 将 InstrumentID 从结构体前部移到末尾，原位置改用 reserve(OldInstrumentIDType[31]) 占位。
+// InstrumentIDType=char[81]，OldInstrumentIDType=char[31]，OldExchangeInstIDType=char[31]。
+
+/// <summary>
+/// 持仓查询请求结构，对齐 <c>CThostFtdcQryInvestorPositionField</c>（CTP 6.7.x）。
+/// 用于 <c>ReqQryInvestorPosition</c>。InstrumentID 留空查全量持仓。
+/// </summary>
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+public struct CThostFtdcQryInvestorPositionField
+{
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
+    public string BrokerID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
+    public string InvestorID;
+
+    /// <summary>保留字段（OldInstrumentIDType[31]，6.7.x 兼容占位，不填）。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
+    public string reserve1;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string ExchangeID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
+    public string InvestUnitID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string InstrumentID;
+}
+
+/// <summary>
+/// 持仓回报结构，对齐 <c>CThostFtdcInvestorPositionField</c>（CTP 6.7.x）。
+/// 用于 <c>OnRspQryInvestorPosition</c> 回调。CTP 按 (合约, 方向, 投机套保) 分组返回多条。
+/// </summary>
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+public struct CThostFtdcInvestorPositionField
+{
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
+    public string reserve1;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
+    public string BrokerID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
+    public string InvestorID;
+
+    /// <summary>持仓方向：'1'=Net '2'=Long '3'=Short。</summary>
+    public byte PosiDirection;
+
+    /// <summary>投机套保标志：'1'=Speculation '2'=Arbitrage '3'=Hedge。</summary>
+    public byte HedgeFlag;
+
+    /// <summary>持仓日期：'1'=Today '2'=History。</summary>
+    public byte PositionDate;
+
+    public int YdPosition;
+    public int Position;
+    public int LongFrozen;
+    public int ShortFrozen;
+    public double LongFrozenAmount;
+    public double ShortFrozenAmount;
+    public int OpenVolume;
+    public int CloseVolume;
+    public double OpenAmount;
+    public double CloseAmount;
+    public double PositionCost;
+    public double PreMargin;
+    public double UseMargin;
+    public double FrozenMargin;
+    public double FrozenCash;
+    public double FrozenCommission;
+    public double CashIn;
+    public double Commission;
+    public double CloseProfit;
+    public double PositionProfit;
+    public double PreSettlementPrice;
+    public double SettlementPrice;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string TradingDay;
+
+    public int SettlementID;
+    public double OpenCost;
+    public double ExchangeMargin;
+    public int CombPosition;
+    public int CombLongFrozen;
+    public int CombShortFrozen;
+    public double CloseProfitByDate;
+    public double CloseProfitByTrade;
+    public int TodayPosition;
+    public double MarginRateByMoney;
+    public double MarginRateByVolume;
+    public int StrikeFrozen;
+    public double StrikeFrozenAmount;
+    public int AbandonFrozen;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string ExchangeID;
+
+    public int YdStrikeFrozen;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
+    public string InvestUnitID;
+
+    public double PositionCostOffset;
+    public int TasPosition;
+    public double TasPositionCost;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string InstrumentID;
+
+    /// <summary>期权市值（6.7.10 新增）。= (多头期权手数 - 空头期权手数) × 合约乘数 × 期权最新价。缺失此字段会导致 P/Invoke 结构体大小少 8 字节，末尾字段错位。</summary>
+    public double OptionValue;
+}
+
+/// <summary>
+/// 资金账户查询请求结构，对齐 <c>CThostFtdcQryTradingAccountField</c>（CTP 6.7.x）。
+/// 用于 <c>ReqQryTradingAccount</c>。只需 BrokerID + InvestorID。
+/// </summary>
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+public struct CThostFtdcQryTradingAccountField
+{
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
+    public string BrokerID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
+    public string InvestorID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 4)]
+    public string CurrencyID;
+
+    /// <summary>业务类型：'1'=Future '2'=Option。</summary>
+    public byte BizType;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
+    public string AccountID;
+}
+
+/// <summary>
+/// 资金账户回报结构，对齐 <c>CThostFtdcTradingAccountField</c>（CTP 6.7.x）。
+/// 用于 <c>OnRspQryTradingAccount</c> 回调。通常单条。
+/// </summary>
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+public struct CThostFtdcTradingAccountField
+{
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
+    public string BrokerID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
+    public string AccountID;
+
+    public double PreMortgage;
+    public double PreCredit;
+    public double PreDeposit;
+    public double PreBalance;
+    public double PreMargin;
+    public double InterestBase;
+    public double Interest;
+    public double Deposit;
+    public double Withdraw;
+    public double FrozenMargin;
+    public double FrozenCash;
+    public double FrozenCommission;
+    public double CurrMargin;
+    public double CashIn;
+    public double Commission;
+    public double CloseProfit;
+    public double PositionProfit;
+    public double Balance;
+    public double Available;
+    public double WithdrawQuota;
+    public double Reserve;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string TradingDay;
+
+    public int SettlementID;
+    public double Credit;
+    public double Mortgage;
+    public double ExchangeMargin;
+    public double DeliveryMargin;
+    public double ExchangeDeliveryMargin;
+    public double ReserveBalance;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 4)]
+    public string CurrencyID;
+
+    public double PreFundMortgageIn;
+    public double PreFundMortgageOut;
+    public double FundMortgageIn;
+    public double FundMortgageOut;
+    public double FundMortgageAvailable;
+    public double MortgageableFund;
+    public double SpecProductMargin;
+    public double SpecProductFrozenMargin;
+    public double SpecProductCommission;
+    public double SpecProductFrozenCommission;
+    public double SpecProductPositionProfit;
+    public double SpecProductCloseProfit;
+    public double SpecProductPositionProfitByAlg;
+    public double SpecProductExchangeMargin;
+
+    public byte BizType;
+
+    public double FrozenSwap;
+    public double RemainSwap;
+
+    /// <summary>期权市值（6.7.10 新增）。市值权益 = 期权市值 + 权益。缺失此字段会导致 P/Invoke 结构体大小少 8 字节，末尾字段错位。</summary>
+    public double OptionValue;
+}
+
+/// <summary>
+/// 合约元数据查询请求结构，对齐 <c>CThostFtdcQryInstrumentField</c>（CTP 6.7.x）。
+/// 用于 <c>ReqQryInstrument</c>。InstrumentID 留空查全量合约。
+/// </summary>
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+public struct CThostFtdcQryInstrumentField
+{
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
+    public string reserve1;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string ExchangeID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
+    public string reserve2;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
+    public string reserve3;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string InstrumentID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string ExchangeInstID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string ProductID;
+}
+
+/// <summary>
+/// 合约元数据回报结构，对齐 <c>CThostFtdcInstrumentField</c>（CTP 6.7.x）。
+/// 用于 <c>OnRspQryInstrument</c> 回调。关键字段：VolumeMultiple（合约乘数）、PriceTick（最小变动价位）。
+/// </summary>
+[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+public struct CThostFtdcInstrumentField
+{
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
+    public string reserve1;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string ExchangeID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 21)]
+    public string InstrumentName;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
+    public string reserve2;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
+    public string reserve3;
+
+    /// <summary>产品类型：'1'=Futures '2'=Options '3'=Combination '5'=Spot 'F'=Spread。</summary>
+    public byte ProductClass;
+
+    public int DeliveryYear;
+    public int DeliveryMonth;
+    public int MaxMarketOrderVolume;
+    public int MinMarketOrderVolume;
+    public int MaxLimitOrderVolume;
+    public int MinLimitOrderVolume;
+
+    /// <summary>合约乘数（如 ag=15、IF=300）。</summary>
+    public int VolumeMultiple;
+
+    /// <summary>最小变动价位（如 ag=0.01、IF=0.2）。</summary>
+    public double PriceTick;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string CreateDate;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string OpenDate;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string ExpireDate;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string StartDelivDate;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
+    public string EndDelivDate;
+
+    public byte InstLifePhase;
+    public int IsTrading;
+    public byte PositionType;
+    public byte PositionDateType;
+    public double LongMarginRatio;
+    public double ShortMarginRatio;
+    public byte MaxMarginSideAlgorithm;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
+    public string reserve4;
+
+    public double StrikePrice;
+    public byte OptionsType;
+    public double UnderlyingMultiple;
+    public byte CombinationType;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string InstrumentID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string ExchangeInstID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string ProductID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string UnderlyingInstrID;
+}

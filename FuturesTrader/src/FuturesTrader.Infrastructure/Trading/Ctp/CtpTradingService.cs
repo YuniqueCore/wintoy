@@ -33,6 +33,9 @@ public sealed class CtpTradingService : ITradingService
     private readonly ILogger<CtpTradingService> _logger;
     private readonly Subject<OrderResult> _orders = new();
     private readonly Subject<Trade> _trades = new();
+    private readonly Subject<Position> _positions = new();
+    private readonly Subject<Instrument> _instruments = new();
+    private readonly Subject<TradingAccount> _accounts = new();
     private readonly Subject<ConnectionState> _connection = new();
     private readonly object _apiLock = new();
 
@@ -67,6 +70,15 @@ public sealed class CtpTradingService : ITradingService
     public IObservable<Trade> TradeStream => _trades;
 
     /// <inheritdoc />
+    public IObservable<Position> PositionStream => _positions;
+
+    /// <inheritdoc />
+    public IObservable<Instrument> InstrumentStream => _instruments;
+
+    /// <inheritdoc />
+    public IObservable<TradingAccount> AccountStream => _accounts;
+
+    /// <inheritdoc />
     public IObservable<ConnectionState> ConnectionStream => _connection;
 
     /// <inheritdoc />
@@ -96,6 +108,9 @@ public sealed class CtpTradingService : ITradingService
             _spi.RspError += OnRspError;
             _spi.RtnOrder += OnRtnOrder;
             _spi.RtnTrade += OnRtnTrade;
+            _spi.RspQryInvestorPosition += OnRspQryInvestorPosition;
+            _spi.RspQryTradingAccount += OnRspQryTradingAccount;
+            _spi.RspQryInstrument += OnRspQryInstrument;
 
             _apiPtr = ThostTraderApiNative.CreateFtdcTraderApi(_options.FlowPath);
             if (_apiPtr == IntPtr.Zero)
@@ -231,6 +246,108 @@ public sealed class CtpTradingService : ITradingService
         }
 
         _logger.LogInformation("撤单已提交：Ref={Ref} Front={Front} Session={Session}", orderRef, frontId, sessionId);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task QueryPositionAsync(string? instrumentId = null, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (CurrentState is not ConnectionState.Connected)
+            throw new InvalidOperationException("交易服务未连接，无法查询持仓");
+        int reqId = Interlocked.Increment(ref _requestIdSeq);
+        lock (_apiLock)
+        {
+            if (_apiPtr == IntPtr.Zero)
+                throw new InvalidOperationException("交易 API 已释放");
+            IntPtr pQry = Marshal.AllocHGlobal(Marshal.SizeOf<CThostFtdcQryInvestorPositionField>());
+            try
+            {
+                var field = new CThostFtdcQryInvestorPositionField
+                {
+                    BrokerID = _options.BrokerId,
+                    InvestorID = _options.UserId,
+                    InstrumentID = instrumentId ?? string.Empty
+                };
+                Marshal.StructureToPtr(field, pQry, fDeleteOld: false);
+                int ret = ThostTraderApiNative.ReqQryInvestorPosition(_apiPtr, pQry, reqId);
+                if (ret != 0)
+                    _logger.LogWarning("ReqQryInvestorPosition 返回 {Ret}（-3=流控，需间隔 ≥1s 重试）", ret);
+            }
+            finally
+            {
+                Marshal.DestroyStructure<CThostFtdcQryInvestorPositionField>(pQry);
+                Marshal.FreeHGlobal(pQry);
+            }
+        }
+        _logger.LogDebug("查询持仓：Instrument={Inst} ReqId={ReqId}", instrumentId ?? "(全量)", reqId);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task QueryInstrumentAsync(string? instrumentId = null, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (CurrentState is not ConnectionState.Connected)
+            throw new InvalidOperationException("交易服务未连接，无法查询合约");
+        int reqId = Interlocked.Increment(ref _requestIdSeq);
+        lock (_apiLock)
+        {
+            if (_apiPtr == IntPtr.Zero)
+                throw new InvalidOperationException("交易 API 已释放");
+            IntPtr pQry = Marshal.AllocHGlobal(Marshal.SizeOf<CThostFtdcQryInstrumentField>());
+            try
+            {
+                var field = new CThostFtdcQryInstrumentField
+                {
+                    InstrumentID = instrumentId ?? string.Empty
+                };
+                Marshal.StructureToPtr(field, pQry, fDeleteOld: false);
+                int ret = ThostTraderApiNative.ReqQryInstrument(_apiPtr, pQry, reqId);
+                if (ret != 0)
+                    _logger.LogWarning("ReqQryInstrument 返回 {Ret}（-3=流控）", ret);
+            }
+            finally
+            {
+                Marshal.DestroyStructure<CThostFtdcQryInstrumentField>(pQry);
+                Marshal.FreeHGlobal(pQry);
+            }
+        }
+        _logger.LogDebug("查询合约：Instrument={Inst} ReqId={ReqId}", instrumentId ?? "(全量)", reqId);
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task QueryTradingAccountAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (CurrentState is not ConnectionState.Connected)
+            throw new InvalidOperationException("交易服务未连接，无法查询资金");
+        int reqId = Interlocked.Increment(ref _requestIdSeq);
+        lock (_apiLock)
+        {
+            if (_apiPtr == IntPtr.Zero)
+                throw new InvalidOperationException("交易 API 已释放");
+            IntPtr pQry = Marshal.AllocHGlobal(Marshal.SizeOf<CThostFtdcQryTradingAccountField>());
+            try
+            {
+                var field = new CThostFtdcQryTradingAccountField
+                {
+                    BrokerID = _options.BrokerId,
+                    InvestorID = _options.UserId
+                };
+                Marshal.StructureToPtr(field, pQry, fDeleteOld: false);
+                int ret = ThostTraderApiNative.ReqQryTradingAccount(_apiPtr, pQry, reqId);
+                if (ret != 0)
+                    _logger.LogWarning("ReqQryTradingAccount 返回 {Ret}（-3=流控）", ret);
+            }
+            finally
+            {
+                Marshal.DestroyStructure<CThostFtdcQryTradingAccountField>(pQry);
+                Marshal.FreeHGlobal(pQry);
+            }
+        }
+        _logger.LogDebug("查询资金账户 ReqId={ReqId}", reqId);
         return Task.CompletedTask;
     }
 
@@ -405,6 +522,21 @@ public sealed class CtpTradingService : ITradingService
         _logger.LogInformation("CtpTrading 结算确认成功，交易就绪");
         TransitionTo(new ConnectionState.Connected());
         _connectTcs?.TrySetResult(true);
+        // 连接就绪后自动查询持仓 + 资金（浮动栏初始数据源）
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(500, CancellationToken.None).ConfigureAwait(false); // CTP 流控间隔
+                await QueryPositionAsync(null, CancellationToken.None).ConfigureAwait(false);
+                await Task.Delay(1000, CancellationToken.None).ConfigureAwait(false); // 查询间隔 ≥ 1s
+                await QueryTradingAccountAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "连接后自动查询持仓/资金失败（非致命）");
+            }
+        });
     }
 
     private void OnRspOrderInsert(bool success, string error, int nRequestID)
@@ -459,6 +591,48 @@ public sealed class CtpTradingService : ITradingService
         catch (Exception ex)
         {
             _logger.LogError(ex, "OnRtnTrade 映射失败");
+        }
+    }
+
+    private void OnRspQryInvestorPosition(IntPtr pField, bool bIsLast, int nRequestID)
+    {
+        if (pField == IntPtr.Zero) return;
+        try
+        {
+            var field = Marshal.PtrToStructure<CThostFtdcInvestorPositionField>(pField);
+            _positions.OnNext(MapToDomain(field));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "OnRspQryInvestorPosition 映射失败");
+        }
+    }
+
+    private void OnRspQryTradingAccount(IntPtr pField, bool bIsLast, int nRequestID)
+    {
+        if (pField == IntPtr.Zero) return;
+        try
+        {
+            var field = Marshal.PtrToStructure<CThostFtdcTradingAccountField>(pField);
+            _accounts.OnNext(MapToDomain(field));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "OnRspQryTradingAccount 映射失败");
+        }
+    }
+
+    private void OnRspQryInstrument(IntPtr pField, bool bIsLast, int nRequestID)
+    {
+        if (pField == IntPtr.Zero) return;
+        try
+        {
+            var field = Marshal.PtrToStructure<CThostFtdcInstrumentField>(pField);
+            _instruments.OnNext(MapToDomain(field));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "OnRspQryInstrument 映射失败");
         }
     }
 
@@ -602,6 +776,82 @@ public sealed class CtpTradingService : ITradingService
     {
         if (string.IsNullOrEmpty(s)) return default;
         return TimeOnly.TryParse(s, out var t) ? t : default;
+    }
+
+    /// <summary>
+    /// CTP InvestorPositionField → Domain Position。
+    /// CTP 按 (合约,方向,投机套保) 分组推送多条；Domain 层按方向聚合。
+    /// <see cref="Position.VolumeMultiple"/> 不在持仓结构内，消费者从 <see cref="InstrumentStream"/> 单独获取。
+    /// </summary>
+    private static Position MapToDomain(in CThostFtdcInvestorPositionField f)
+    {
+        return new Position
+        {
+            InstrumentId = f.InstrumentID ?? string.Empty,
+            InvestorId = f.InvestorID ?? string.Empty,
+            Direction = (char)f.PosiDirection switch
+            {
+                '2' => Direction.Buy,    // Long
+                '3' => Direction.Sell,   // Short
+                _ => Direction.Buy       // Net 视为多头（罕见）
+            },
+            HedgeFlag = (char)f.HedgeFlag switch
+            {
+                '1' => HedgeFlag.Speculation,
+                '2' => HedgeFlag.Arbitrage,
+                '3' => HedgeFlag.Hedge,
+                _ => HedgeFlag.Speculation
+            },
+            TodayPosition = f.TodayPosition,
+            YdPosition = f.YdPosition,
+            TotalPosition = f.Position,
+            FrozenPosition = f.LongFrozen + f.ShortFrozen,
+            PositionCost = (decimal)f.PositionCost,
+            PositionProfit = (decimal)f.PositionProfit,
+            VolumeMultiple = 0  // CThostFtdcInvestorPositionField 无此字段，由 InstrumentStream 提供
+        };
+    }
+
+    /// <summary>
+    /// CTP TradingAccountField → Domain TradingAccount。
+    /// CTP 无 <c>WithdrawBalance</c>/<c>Equity</c>/<c>MarketValue</c> 直接字段，按 Domain 注释公式换算：
+    /// <see cref="TradingAccount.WithdrawBalance"/> = <c>Withdraw</c>（当日出金）；
+    /// <see cref="TradingAccount.Equity"/> = <c>Balance</c> - <c>Withdraw</c>；
+    /// <see cref="TradingAccount.MarketValue"/> = <c>CurrMargin</c> + <c>PositionProfit</c>（保证金占用 + 浮动盈亏 ≈ 持仓市值）。
+    /// </summary>
+    private static TradingAccount MapToDomain(in CThostFtdcTradingAccountField f)
+    {
+        var withdraw = (decimal)f.Withdraw;
+        var balance = (decimal)f.Balance;
+        return new TradingAccount
+        {
+            AccountId = f.AccountID ?? string.Empty,
+            Balance = balance,
+            Available = (decimal)f.Available,
+            Equity = balance - withdraw,
+            MarketValue = (decimal)(f.CurrMargin + f.PositionProfit),
+            PositionProfit = (decimal)f.PositionProfit,
+            CloseProfit = (decimal)f.CloseProfit,
+            Margin = (decimal)f.CurrMargin,
+            FrozenMargin = (decimal)f.FrozenMargin,
+            FrozenCash = (decimal)f.FrozenCash,
+            FrozenCommission = (decimal)f.FrozenCommission,
+            Commission = (decimal)f.Commission,
+            WithdrawBalance = withdraw
+        };
+    }
+
+    /// <summary>CTP InstrumentField → Domain Instrument（仅取关键字段：代码/交易所/名称/PriceTick/合约乘数）。</summary>
+    private static Instrument MapToDomain(in CThostFtdcInstrumentField f)
+    {
+        return new Instrument
+        {
+            InstrumentId = f.InstrumentID ?? string.Empty,
+            ExchangeId = f.ExchangeID ?? string.Empty,
+            Name = f.InstrumentName ?? string.Empty,
+            PriceTick = (decimal)f.PriceTick,
+            VolumeMultiple = f.VolumeMultiple
+        };
     }
 
     private string NextOrderRef() => Interlocked.Increment(ref _orderRefSeq).ToString();

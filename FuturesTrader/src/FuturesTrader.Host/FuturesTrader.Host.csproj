@@ -37,6 +37,11 @@
           Link="thostmduserapi_se.dll"
           CopyToOutputDirectory="PreserveNewest"
           Visible="false" />
+    <!-- CTP 6.7.11 原生交易 DLL（32 位 x86）：CtpTradingService 通过 ThostTraderApiNative P/Invoke 调用 -->
+    <None Include="D:\work\projs\futures\qihuo-software\thosttraderapi_se.dll"
+          Link="thosttraderapi_se.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
   </ItemGroup>
 
 </Project>

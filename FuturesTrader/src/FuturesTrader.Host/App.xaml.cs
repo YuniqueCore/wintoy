@@ -154,6 +154,13 @@ public partial class App : System.Windows.Application
                 services.AddSingleton<ISoundService, SoundService>();
                 services.AddSingleton<IKeyboardOperationService, KeyboardOperationService>();
 
+                // 下单校验链（对齐 0527.exe sub_4C036C 7 步校验）：
+                // ITradingSessionChecker / ISpreadCalculator 纯逻辑无状态 → 单例；
+                // IOrderValidator 含每窗口 CBNearby 点击节流状态 → Transient，让每个合约窗口独立节流。
+                services.AddSingleton<ITradingSessionChecker, TradingSessionChecker>();
+                services.AddSingleton<ISpreadCalculator, SpreadCalculator>();
+                services.AddTransient<IOrderValidator, OrderValidator>();
+
                 // MCP 工具+HTTP 传输注册（仅启用时；MapMcp 端点在下方 ConfigureWebHostDefaults 配置）
                 if (mcpEnabled)
                 {

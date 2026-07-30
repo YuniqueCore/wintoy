@@ -13,6 +13,8 @@ namespace FuturesTrader.Infrastructure.Trading.Ctp.Native;
 /// </para>
 /// <para>
 /// <b>TraderApi vtable 布局</b>（6.7.11 <c>ThostFtdcTraderApi.h</c>，无 virtual 析构 → 无析构槽）：
+/// 索引推算：vnpy_ctp <c>ctp_td_header_function.h</c> req 函数 0-based 顺序 + 固定偏移 15
+/// （已用 ReqOrderInsert=26/ReqOrderAction=29/ReqSettlementInfoConfirm=31 三点验证偏移恒为 15）。
 /// <code>
 /// [0]  Release()
 /// [1]  Init()
@@ -34,6 +36,13 @@ namespace FuturesTrader.Infrastructure.Trading.Ctp.Native;
 /// [29] ReqOrderAction(CThostFtdcInputOrderActionField*, int)
 /// [30] ReqQryMaxOrderVolume
 /// [31] ReqSettlementInfoConfirm(CThostFtdcSettlementInfoConfirmField*, int)
+/// [32-44] ReqRemoveParkedOrder / ... / ReqQryTrade
+/// [45] ReqQryInvestorPosition(CThostFtdcQryInvestorPositionField*, int)
+/// [46] ReqQryTradingAccount(CThostFtdcQryTradingAccountField*, int)
+/// [47-50] ReqQryInvestor / ReqQryTradingCode / ReqQryInstrumentMarginRate / ReqQryInstrumentCommissionRate
+/// [51] ReqQryUserSession（6.7.11 新增）
+/// [52-53] ReqQryExchange / ReqQryProduct
+/// [54] ReqQryInstrument(CThostFtdcQryInstrumentField*, int)
 /// </code>
 /// </para>
 /// </summary>
@@ -90,10 +99,16 @@ internal static class ThostTraderApiNative
         public const int ReqOrderInsert = 26;
         public const int ReqOrderAction = 29;
         public const int ReqSettlementInfoConfirm = 31;
+        // 查询家族（索引 = vnpy req 0-based + 偏移 15，见类注释推算依据）
+        public const int ReqQryInvestorPosition = 45;
+        public const int ReqQryTradingAccount = 46;
+        public const int ReqQryUserSession = 51;   // 6.7.11 新增
+        public const int ReqQryInstrument = 54;
     }
 
     // ===== CThostFtdcTraderSpi vtable 索引（用于 SpiBridge 构造伪 C++ 对象） =====
-    // 6.7.11 共 82 槽（0-81），无 virtual 析构。见 CtpTraderSpiBridge 类注释的完整布局。
+    // 6.7.11 共 164 槽（0-163），无 virtual 析构。来源：vnpy_ctp ctp_td_header_define.h（main 分支）。
+    // 6.7.11 在槽位 36 新增 OnRspQryUserSession，导致 [36-163] 所有索引相比 6.7.7 +1。
 
     public static class SpiVtable
     {
@@ -108,15 +123,24 @@ internal static class ThostTraderApiNative
         public const int OnRspOrderAction = 14;
         // [15] OnRspQryMaxOrderVolume
         public const int OnRspSettlementInfoConfirm = 16;
-        // [17-72] OnRspRemoveParkedOrder / ... / OnRspQryAccountregister（5参 Rsp 模式）
-        public const int OnRspError = 73;
-        public const int OnRtnOrder = 74;
-        public const int OnRtnTrade = 75;
-        public const int OnErrRtnOrderInsert = 76;
-        public const int OnErrRtnOrderAction = 77;
-        // [78-81] OnRtnInstrumentStatus / OnRtnBulletin / OnRtnTradingNotice / OnRtnErrorConditionalOrder（2参 Rtn 模式）
-        /// <summary>vtable 槽位数（含未使用槽），用于分配函数指针数组大小。</summary>
-        public const int SlotCount = 82;
+        // [17-29] OnRspRemoveParkedOrder / ... / OnRspQryTrade（5参 Rsp 模式）
+        public const int OnRspQryInvestorPosition = 30;   // 持仓查询回调
+        public const int OnRspQryTradingAccount = 31;     // 资金账户查询回调
+        // [32-35] OnRspQryInvestor / OnRspQryTradingCode / OnRspQryInstrumentMarginRate / OnRspQryInstrumentCommissionRate
+        public const int OnRspQryUserSession = 36;        // 6.7.11 新增（Noop 占位，保持对齐）
+        // [37-38] OnRspQryExchange / OnRspQryProduct
+        public const int OnRspQryInstrument = 39;         // 合约元数据查询回调
+        // [40-72] OnRspQryDepthMarketData / ... / OnRspQryTransferSerial（5参 Rsp 模式）
+        public const int OnRspQryAccountregister = 73;    // 原 72，6.7.11 +1
+        public const int OnRspError = 74;                 // 原 73，6.7.11 +1
+        public const int OnRtnOrder = 75;                 // 原 74
+        public const int OnRtnTrade = 76;                 // 原 75
+        public const int OnErrRtnOrderInsert = 77;        // 原 76
+        public const int OnErrRtnOrderAction = 78;        // 原 77
+        // [79-82] OnRtnInstrumentStatus / OnRtnBulletin / OnRtnTradingNotice / OnRtnErrorConditionalOrder（2参 Rtn 模式）
+        // [83-163] 6.7.x 扩展槽（SPBM/RCAMS/RULE/OffsetSetting 等，均 Noop 占位避免越界）
+        /// <summary>vtable 槽位数（含未使用槽），用于分配函数指针数组大小。6.7.11 最大槽位 163。</summary>
+        public const int SlotCount = 164;
     }
 
     // ===== 流订阅重传方式（THOST_TE_RESUME_TYPE） =====
@@ -162,6 +186,15 @@ internal static class ThostTraderApiNative
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     public delegate int ReqSettlementInfoConfirmDelegate(IntPtr thisPtr, IntPtr pSettlementInfoConfirm, int nRequestID);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    public delegate int ReqQryInvestorPositionDelegate(IntPtr thisPtr, IntPtr pQryInvestorPosition, int nRequestID);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    public delegate int ReqQryTradingAccountDelegate(IntPtr thisPtr, IntPtr pQryTradingAccount, int nRequestID);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    public delegate int ReqQryInstrumentDelegate(IntPtr thisPtr, IntPtr pQryInstrument, int nRequestID);
 
     // ===== vtable 调用辅助 =====
 
@@ -213,4 +246,13 @@ internal static class ThostTraderApiNative
 
     public static int ReqSettlementInfoConfirm(IntPtr apiPtr, IntPtr pSettlementInfoConfirm, int nRequestID) =>
         GetVtableMethod<ReqSettlementInfoConfirmDelegate>(apiPtr, ApiVtable.ReqSettlementInfoConfirm)(apiPtr, pSettlementInfoConfirm, nRequestID);
+
+    public static int ReqQryInvestorPosition(IntPtr apiPtr, IntPtr pQryInvestorPosition, int nRequestID) =>
+        GetVtableMethod<ReqQryInvestorPositionDelegate>(apiPtr, ApiVtable.ReqQryInvestorPosition)(apiPtr, pQryInvestorPosition, nRequestID);
+
+    public static int ReqQryTradingAccount(IntPtr apiPtr, IntPtr pQryTradingAccount, int nRequestID) =>
+        GetVtableMethod<ReqQryTradingAccountDelegate>(apiPtr, ApiVtable.ReqQryTradingAccount)(apiPtr, pQryTradingAccount, nRequestID);
+
+    public static int ReqQryInstrument(IntPtr apiPtr, IntPtr pQryInstrument, int nRequestID) =>
+        GetVtableMethod<ReqQryInstrumentDelegate>(apiPtr, ApiVtable.ReqQryInstrument)(apiPtr, pQryInstrument, nRequestID);
 }

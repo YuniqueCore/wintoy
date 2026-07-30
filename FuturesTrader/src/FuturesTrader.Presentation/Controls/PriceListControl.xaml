@@ -96,7 +96,8 @@
                       HorizontalScrollBarVisibility="Hidden">
             <ItemsControl x:Name="PriceItemsControl"
                           ItemsSource="{Binding PriceLadder.Rows, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                          ItemTemplateSelector="{StaticResource RowTemplateSelector}">
+                          ItemTemplateSelector="{StaticResource RowTemplateSelector}"
+                          MouseLeftButtonUp="OnPriceRowClick">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <StackPanel Orientation="Vertical"/>

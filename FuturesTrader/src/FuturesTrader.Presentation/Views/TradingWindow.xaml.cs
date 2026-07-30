@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
 using FuturesTrader.Presentation.Abstractions;
+using FuturesTrader.Presentation.Controls;
 using FuturesTrader.Presentation.ViewModels;
 using Wpf.Ui.Controls;
 
@@ -48,6 +49,18 @@ public sealed partial class TradingWindow : FluentWindow
             return;
         }
         // 未命中已注册手势 → 默认处理
+    }
+
+    /// <summary>
+    /// 价格梯行点击 → 设置下单 LimitPrice（对齐 0527.exe TPointWindow 点价设价交互）。
+    /// 点击上方卖盘行可快速挂卖单价，点击下方买盘行可快速挂买单价。
+    /// </summary>
+    private void OnPriceSelected(object sender, PriceSelectedEventArgs e)
+    {
+        if (DataContext is TradingViewModel vm)
+        {
+            vm.Order.Price = e.Price;
+        }
     }
 
     protected override void OnClosing(CancelEventArgs e)

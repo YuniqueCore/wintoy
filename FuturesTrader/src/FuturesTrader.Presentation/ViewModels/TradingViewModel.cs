@@ -27,6 +27,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     private readonly IMarketDataService _marketData;
     private readonly IKeyboardOperationService _keyboard;
     private readonly ISoundService _sound;
+    private readonly ITradingService _trading;
     private readonly MarketDataOptions _options;
     private readonly ILogger<TradingViewModel> _logger;
     private readonly CompositeDisposable _subscriptions = new();
@@ -42,18 +43,20 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         ILogger<TradingViewModel> logger,
         ITradingService trading,
         ILocalRiskService risk,
+        IOrderValidator orderValidator,
         ILogger<OrderViewModel> orderLogger)
     {
         InstrumentCode = instrumentCode;
         _marketData = marketData;
         _keyboard = keyboard;
         _sound = sound;
+        _trading = trading;
         _options = options.Value;
         _logger = logger;
         PriceLadderLevels = _options.PriceLadderLevels;
 
-        // 下单区 VM：每合约独立实例，共享交易/风控单例服务
-        Order = new OrderViewModel(instrumentCode, trading, risk, orderLogger);
+        // 下单区 VM：每合约独立实例，共享交易/风控/校验链单例服务
+        Order = new OrderViewModel(instrumentCode, trading, risk, orderValidator, orderLogger);
 
         // 推迟到 UI 线程空闲后订阅，避免构造期间行情回调竞态
         MarshalToUi(Subscribe, immediateIfNoDispatcher: true);
@@ -92,7 +95,38 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string ConnectionState { get; private set; } = "未连接";
 
-    /// <summary>订阅行情流并初始化连接状态监听。</summary>
+    /// <summary>多头持仓手数（本合约聚合，CTP PosiDirection='2' Long）。</summary>
+    [ObservableProperty]
+    public partial int LongPosition { get; private set; }
+
+    /// <summary>空头持仓手数（本合约聚合，CTP PosiDirection='3' Short）。</summary>
+    [ObservableProperty]
+    public partial int ShortPosition { get; private set; }
+
+    /// <summary>总持仓手数（多+空，浮动栏「持」字段）。</summary>
+    public int TotalPosition => LongPosition + ShortPosition;
+
+    /// <summary>可用资金（CTP Available，浮动栏「可」字段）。</summary>
+    [ObservableProperty]
+    public partial decimal Available { get; private set; }
+
+    /// <summary>投资者权益（CTP Balance - WithdrawBalance，浮动栏「权」字段）。</summary>
+    [ObservableProperty]
+    public partial decimal Equity { get; private set; }
+
+    /// <summary>市值（持仓市值，浮动栏「市」字段）。</summary>
+    [ObservableProperty]
+    public partial decimal MarketValue { get; private set; }
+
+    /// <summary>净盈亏（持仓盈亏 + 平仓盈亏，浮动栏「净」字段）。</summary>
+    [ObservableProperty]
+    public partial decimal NetProfit { get; private set; }
+
+    /// <summary>当日手续费（CTP Commission，浮动栏辅助字段）。</summary>
+    [ObservableProperty]
+    public partial decimal Commission { get; private set; }
+
+    /// <summary>订阅行情流 + 交易流（持仓/资金/合约元数据）并初始化连接状态监听。</summary>
     private void Subscribe()
     {
         if (_disposed) return;
@@ -112,6 +146,22 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
                     ex => _logger.LogError(ex, "行情流出错 {Instrument}", InstrumentCode));
             _subscriptions.Add(mdSub);
 
+            // 持仓流 → 过滤本合约 → 按方向覆盖式更新（CTP 每查询一次推送一批快照）
+            var posSub = _trading.PositionStream
+                .Where(p => string.Equals(p.InstrumentId, InstrumentCode, StringComparison.Ordinal))
+                .Subscribe(OnPositionUpdate, ex => _logger.LogError(ex, "持仓流出错 {Instrument}", InstrumentCode));
+            _subscriptions.Add(posSub);
+
+            // 资金流 → 单条快照覆盖（CTP 资金账户通常单条）
+            var accSub = _trading.AccountStream.Subscribe(OnAccountUpdate, ex => _logger.LogError(ex, "资金流出错"));
+            _subscriptions.Add(accSub);
+
+            // 合约元数据流 → 过滤本合约 → 更新 PriceTick（替换硬编码 1m），同步给 Order 做价格校验
+            var instSub = _trading.InstrumentStream
+                .Where(i => string.Equals(i.InstrumentId, InstrumentCode, StringComparison.Ordinal))
+                .Subscribe(OnInstrumentUpdate, ex => _logger.LogError(ex, "合约元数据流出错 {Instrument}", InstrumentCode));
+            _subscriptions.Add(instSub);
+
             // 确保已连接，然后订阅本合约行情
             _ = EnsureSubscribedAsync();
         }
@@ -119,6 +169,49 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         {
             _logger.LogError(ex, "订阅行情失败 {Instrument}", InstrumentCode);
         }
+    }
+
+    /// <summary>持仓回报到达：按方向覆盖式更新（同方向多条按最新快照）。</summary>
+    private void OnPositionUpdate(Position position)
+    {
+        if (_disposed) return;
+        MarshalToUi(() =>
+        {
+            if (_disposed) return;
+            switch (position.Direction)
+            {
+                case Direction.Buy: LongPosition = position.TotalPosition; break;
+                case Direction.Sell: ShortPosition = position.TotalPosition; break;
+            }
+            OnPropertyChanged(nameof(TotalPosition));
+        });
+    }
+
+    /// <summary>资金账户回报到达：覆盖式更新浮动栏资金字段。</summary>
+    private void OnAccountUpdate(TradingAccount account)
+    {
+        if (_disposed) return;
+        MarshalToUi(() =>
+        {
+            if (_disposed) return;
+            Available = account.Available;
+            Equity = account.Equity;
+            MarketValue = account.MarketValue;
+            NetProfit = account.PositionProfit + account.CloseProfit;
+            Commission = account.Commission;
+        });
+    }
+
+    /// <summary>合约元数据回报到达：更新 PriceTick 并同步给 Order VM。</summary>
+    private void OnInstrumentUpdate(Instrument instrument)
+    {
+        if (_disposed) return;
+        MarshalToUi(() =>
+        {
+            if (_disposed) return;
+            _priceTick = instrument.PriceTick > 0 ? instrument.PriceTick : 1m;
+            Order.PriceTick = _priceTick;
+        });
     }
 
     /// <summary>确保行情服务已连接并订阅本合约（幂等）。</summary>

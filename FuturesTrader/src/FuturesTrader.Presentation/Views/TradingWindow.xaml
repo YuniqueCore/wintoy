@@ -80,7 +80,8 @@
         <controls:PriceListControl Grid.Row="1"
                                    PriceLadder="{Binding PriceLadder}"
                                    RowHeight="18"
-                                   MouseWheelSpeed="3"/>
+                                   MouseWheelSpeed="3"
+                                   PriceSelected="OnPriceSelected"/>
 
         <!-- 底部下单区：买卖/开平/价格/数量/报单/撤单。DataContext 切到 Order VM。 -->
         <Border Grid.Row="2" Background="#2D2D2D" Padding="10,8" DataContext="{Binding Order}">

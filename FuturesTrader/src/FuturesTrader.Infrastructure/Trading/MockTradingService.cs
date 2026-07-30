@@ -14,6 +14,9 @@ public sealed class MockTradingService : ITradingService
 {
     private readonly Subject<OrderResult> _orders = new();
     private readonly Subject<Trade> _trades = new();
+    private readonly Subject<Position> _positions = new();
+    private readonly Subject<Instrument> _instruments = new();
+    private readonly Subject<TradingAccount> _accounts = new();
     private readonly Subject<ConnectionState> _connection = new();
     private readonly ILogger<MockTradingService> _logger;
     private int _orderRefSeq;
@@ -32,6 +35,15 @@ public sealed class MockTradingService : ITradingService
 
     /// <inheritdoc />
     public IObservable<Trade> TradeStream => _trades;
+
+    /// <inheritdoc />
+    public IObservable<Position> PositionStream => _positions;
+
+    /// <inheritdoc />
+    public IObservable<Instrument> InstrumentStream => _instruments;
+
+    /// <inheritdoc />
+    public IObservable<TradingAccount> AccountStream => _accounts;
 
     /// <inheritdoc />
     public IObservable<ConnectionState> ConnectionStream => _connection;
@@ -131,11 +143,91 @@ public sealed class MockTradingService : ITradingService
     }
 
     /// <inheritdoc />
+    public Task QueryPositionAsync(string? instrumentId = null, CancellationToken cancellationToken = default)
+    {
+        if (_disposed == 1) throw new ObjectDisposedException(nameof(MockTradingService));
+        if (CurrentState is not ConnectionState.Connected)
+            throw new InvalidOperationException("交易服务未连接，无法查询持仓");
+
+        // 推 1 条假 Position（无实际持仓，TotalPosition=0；VolumeMultiple=1000 与 au 系列对齐）
+        _positions.OnNext(new Position
+        {
+            InstrumentId = instrumentId ?? "au2512",
+            InvestorId = "mock-investor",
+            Direction = Direction.Buy,
+            HedgeFlag = HedgeFlag.Speculation,
+            TodayPosition = 0,
+            YdPosition = 0,
+            TotalPosition = 0,
+            FrozenPosition = 0,
+            PositionCost = 0m,
+            PositionProfit = 0m,
+            VolumeMultiple = 1000
+        });
+
+        _logger.LogInformation("MockTrading 查询持仓：{Instrument}", instrumentId ?? "(全量)");
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task QueryInstrumentAsync(string? instrumentId = null, CancellationToken cancellationToken = default)
+    {
+        if (_disposed == 1) throw new ObjectDisposedException(nameof(MockTradingService));
+        if (CurrentState is not ConnectionState.Connected)
+            throw new InvalidOperationException("交易服务未连接，无法查询合约");
+
+        // 推 1 条假 Instrument（au2512：PriceTick=0.02, VolumeMultiple=1000）
+        _instruments.OnNext(new Instrument
+        {
+            InstrumentId = instrumentId ?? "au2512",
+            ExchangeId = "SHFE",
+            Name = "黄金2512",
+            PriceTick = 0.02m,
+            VolumeMultiple = 1000
+        });
+
+        _logger.LogInformation("MockTrading 查询合约：{Instrument}", instrumentId ?? "(全量)");
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
+    public Task QueryTradingAccountAsync(CancellationToken cancellationToken = default)
+    {
+        if (_disposed == 1) throw new ObjectDisposedException(nameof(MockTradingService));
+        if (CurrentState is not ConnectionState.Connected)
+            throw new InvalidOperationException("交易服务未连接，无法查询资金");
+
+        // 推 1 条假 TradingAccount（可用=权益=300000，无持仓无冻结）
+        _accounts.OnNext(new TradingAccount
+        {
+            AccountId = "mock-account",
+            Balance = 300000m,
+            Available = 300000m,
+            Equity = 300000m,
+            MarketValue = 0m,
+            PositionProfit = 0m,
+            CloseProfit = 0m,
+            Margin = 0m,
+            FrozenMargin = 0m,
+            FrozenCash = 0m,
+            FrozenCommission = 0m,
+            Commission = 0m,
+            WithdrawBalance = 0m
+        });
+
+        _logger.LogInformation("MockTrading 查询资金账户");
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return ValueTask.CompletedTask;
         _orders.OnCompleted();
         _trades.OnCompleted();
+        _positions.OnCompleted();
+        _instruments.OnCompleted();
+        _accounts.OnCompleted();
         _connection.OnCompleted();
         return ValueTask.CompletedTask;
     }

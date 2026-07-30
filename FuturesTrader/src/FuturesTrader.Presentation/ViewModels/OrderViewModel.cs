@@ -30,22 +30,27 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
 {
     private readonly ITradingService _trading;
     private readonly ILocalRiskService _risk;
+    private readonly IOrderValidator _validator;
     private readonly ILogger<OrderViewModel> _logger;
     private readonly ConcurrentDictionary<string, (int FrontId, int SessionId)> _activeOrders = new();
     private readonly CompositeDisposable _subscriptions = new();
     private decimal _priceTick = 1m;
     private int _sessionOrderCount;
+    private int _longPosition;
+    private int _shortPosition;
     private bool _disposed;
 
     public OrderViewModel(
         string instrumentCode,
         ITradingService trading,
         ILocalRiskService risk,
+        IOrderValidator orderValidator,
         ILogger<OrderViewModel> logger)
     {
         InstrumentCode = instrumentCode;
         _trading = trading;
         _risk = risk;
+        _validator = orderValidator;
         _logger = logger;
 
         OrderCommand = new AsyncRelayCommand(SendOrderAsync, CanSendOrder);
@@ -53,7 +58,41 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
 
         // 订阅报单回报流（CTP 在工作线程触发，回调内 MarshalToUi）
         _subscriptions.Add(_trading.OrderStream.Subscribe(OnOrderResult, OnStreamError));
+
+        // 订阅持仓回报流：聚合本合约多头/空头持仓，供风控 MaxPositionCount 校验
+        // CTP OnRspQryInvestorPosition 按 (合约,方向,投机套保) 分组推送多条，这里按方向合并
+        _subscriptions.Add(
+            _trading.PositionStream
+                .Where(p => string.Equals(p.InstrumentId, InstrumentCode, StringComparison.Ordinal))
+                .Subscribe(OnPositionUpdate, OnStreamError));
     }
+
+    /// <summary>
+    /// 持仓回报到达：按方向（Buy=多头 / Sell=空头）累加手数。
+    /// CTP 一次查询可能推送多条（不同 HedgeFlag），这里按方向分组累加；
+    /// 收到本合约任意一条持仓即覆盖该方向的累计值（以最新查询快照为准）。
+    /// <para>
+    /// 注意：CTP 同一查询批次内会推送 (合约,方向,HedgeFlag) 笛卡尔积的多条记录，
+    /// 简化处理：每条 Position 视为该方向的最新快照，直接覆盖。
+    /// 完整聚合需等待 bIsLast=true（Domain 层未暴露批次边界），目前按覆盖语义足够（风控只看总持仓上限）。
+    /// </para>
+    /// </summary>
+    private void OnPositionUpdate(Position position)
+    {
+        if (_disposed) return;
+        MarshalToUi(() =>
+        {
+            if (_disposed) return;
+            switch (position.Direction)
+            {
+                case Direction.Buy: _longPosition = position.TotalPosition; break;
+                case Direction.Sell: _shortPosition = position.TotalPosition; break;
+            }
+        });
+    }
+
+    /// <summary>当前合约总持仓（多+空，用于风控 MaxPositionCount 校验）。</summary>
+    private int CurrentPositionCount => _longPosition + _shortPosition;
 
     /// <summary>合约代码（由 TradingViewModel 注入，与窗口标题一致）。</summary>
     public string InstrumentCode { get; }
@@ -127,14 +166,7 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
 
-        // 1. 价格 tick 校验（PriceTick=0 时不校验，兼容市价）
-        if (_priceTick > 0 && Price > 0 && Price % _priceTick != 0)
-        {
-            StatusMessage = $"价格必须是 {_priceTick} 的整数倍";
-            return;
-        }
-
-        // 2. 构造报单请求值对象
+        // 构造报单请求值对象
         var request = new OrderRequest
         {
             InstrumentId = InstrumentCode,
@@ -145,17 +177,28 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
             PriceTick = _priceTick
         };
 
-        // 3. 本地风控校验（持仓数暂未跟踪，传 0；后续持仓查询接入后替换）
-        var (allowed, reason) = _risk.CheckOrder(request, _sessionOrderCount, currentPositionCount: 0);
+        // 7 步校验链（对齐 0527.exe sub_4C036C）：合约存在 → 交易时段 → 仅平仓 →
+        // CBNearby 节流 → 对手价 → 本地风控 → 价格 tick。任一失败即拒绝，不提交 CTP。
+        // 上下文当前仅填充会话报单数与持仓数；OnlyOpen/CBNearby/对手价开关待 UI 接入后扩展。
+        var context = new OrderValidationContext
+        {
+            Now = DateTime.Now,
+            CurrentOrderCount = _sessionOrderCount,
+            CurrentPositionCount = CurrentPositionCount
+        };
+        var (allowed, reason) = _validator.Validate(request, context);
         if (!allowed)
         {
-            StatusMessage = reason ?? "本地风控拒绝";
-            _logger.LogWarning("报单被本地风控拒绝：{Reason}（{Instrument} {Dir} {Offset} {Vol}@{Price}）",
+            StatusMessage = reason ?? "校验拒绝";
+            _logger.LogWarning("报单被校验链拒绝：{Reason}（{Instrument} {Dir} {Offset} {Vol}@{Price}）",
                 reason, InstrumentCode, Direction, OffsetFlag, Quantity, Price);
             return;
         }
 
-        // 4. 提交 CTP（或 Mock）
+        // 校验通过，记录点击时刻（CBNearby 节流用，对齐 sub_4C036C +1140）
+        _validator.RecordClick(Direction, DateTime.Now);
+
+        // 提交 CTP（或 Mock）
         try
         {
             IsBusy = true;

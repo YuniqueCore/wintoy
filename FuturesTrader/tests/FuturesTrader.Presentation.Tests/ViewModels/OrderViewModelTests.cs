@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Windows.Input;
 using FluentAssertions;
+using FuturesTrader.Application;
+using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Domain.Configuration;
 using FuturesTrader.Domain.Trading;
 using FuturesTrader.Infrastructure.Trading;
@@ -35,8 +37,11 @@ public class OrderViewModelTests
     {
         trading ??= new MockTradingService(NullLogger<MockTradingService>.Instance);
         risk ??= new LocalRiskService(PermissiveConfig, NullLogger<LocalRiskService>.Instance);
+        // 用宽容时段校验器构造 OrderValidator，避免测试依赖真实交易时段
+        // （7 步校验链中的 session 检查在非交易时段会拒单，测试需绕开）
+        var validator = new OrderValidator(new AlwaysAllowSessionChecker(), risk);
         return new OrderViewModel(
-            instrument, trading, risk,
+            instrument, trading, risk, validator,
             NullLogger<OrderViewModel>.Instance);
     }
 
@@ -281,4 +286,16 @@ internal static class CommandTestExtensions
         // AsyncRelayCommand 内部 Task 已启动，等待一帧让同步部分完成
         return Task.Delay(10);
     }
+}
+
+/// <summary>
+/// 测试用宽容时段校验器：任何时刻都允许下单，避免 OrderViewModel 测试依赖真实交易时段。
+/// 对齐 OrderValidatorTests.StubSessionChecker 的模式（默认放行）。
+/// </summary>
+internal sealed class AlwaysAllowSessionChecker : ITradingSessionChecker
+{
+    public bool IsInSession(DateTime now) => true;
+    public bool CanPlaceOrder(DateTime now) => true;
+    public (bool Allowed, string? Reason) CheckOrderAllowed(DateTime now) => (true, null);
+    public TimeSpan TimeToNextSession(DateTime now) => TimeSpan.Zero;
 }
