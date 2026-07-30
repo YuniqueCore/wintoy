@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- CTP thost*_se.dll 是 32 位，进程必须 x86 -->
+    <PlatformTarget>x86</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FuturesTrader.Domain\FuturesTrader.Domain.csproj" />
+    <ProjectReference Include="..\..\src\FuturesTrader.Application\FuturesTrader.Application.csproj" />
+    <ProjectReference Include="..\..\src\FuturesTrader.Infrastructure\FuturesTrader.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- CTP 原生 DLL 复制到输出根（与 Host 一致） -->
+    <None Include="..\..\src\FuturesTrader.Host\native\thostmduserapi_se.dll"
+          Link="thostmduserapi_se.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+    <None Include="..\..\src\FuturesTrader.Host\native\thosttraderapi_se.dll"
+          Link="thosttraderapi_se.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+
+</Project>

@@ -7,12 +7,12 @@ namespace FuturesTrader.Application.Options;
 /// </summary>
 public sealed class WindowLayoutOptions
 {
-    /// <summary>旧软件 Users.xml 绝对路径（UTF-8 编码，含 &lt;WindowHistory&gt;）。</summary>
-    public string UsersXmlPath { get; init; } = string.Empty;
+    /// <summary>旧软件 Users.xml 路径（UTF-8 编码，含 &lt;WindowHistory&gt;）。PostConfigure 会将相对路径绝对化。</summary>
+    public string UsersXmlPath { get; set; } = string.Empty;
 
-    /// <summary>window-groups.json 路径（旁挂存储 20 个组名）。</summary>
-    public string GroupsJsonPath { get; init; } = string.Empty;
+    /// <summary>window-groups.json 路径（旁挂存储 20 个组名）。PostConfigure 会将相对路径绝对化。</summary>
+    public string GroupsJsonPath { get; set; } = string.Empty;
 
     /// <summary>用户 ID（对应 Users.xml &lt;userid&gt;），空串表示取第一个 User。</summary>
-    public string UserId { get; init; } = string.Empty;
+    public string UserId { get; set; } = string.Empty;
 }

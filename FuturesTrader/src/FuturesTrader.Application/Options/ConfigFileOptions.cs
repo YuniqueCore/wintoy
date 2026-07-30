@@ -6,6 +6,6 @@ namespace FuturesTrader.Application.Options;
 /// </summary>
 public sealed class ConfigFileOptions
 {
-    /// <summary>旧软件 config.ini 的绝对路径（GBK 编码）。</summary>
-    public string Path { get; init; } = string.Empty;
+    /// <summary>旧软件 config.ini 路径（GBK 编码）。PostConfigure 会将相对路径绝对化。</summary>
+    public string Path { get; set; } = string.Empty;
 }

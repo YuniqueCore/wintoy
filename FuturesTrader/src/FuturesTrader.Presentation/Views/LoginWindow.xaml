@@ -136,7 +136,7 @@
                     <TextBlock Text="连接状态" FontWeight="SemiBold" Margin="0,0,0,8"/>
                     <ui:InfoBar Title="{Binding StatusMessage}"
                                 IsOpen="True"
-                                Severity="Information"
+                                Severity="Informational"
                                 Margin="0,0,0,12"/>
 
                     <!-- 登录选项 -->

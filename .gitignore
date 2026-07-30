@@ -1,6 +1,10 @@
 qihuo-software
 second-soft-usage.docx
 
+FuturesTrader/src/FuturesTrader.Host/data/*
+FuturesTrader/src/FuturesTrader.Host/appsettings.json
+FuturesTrader/src/FuturesTrader.Host/native/*
+.trae/*
 
 # Windows thumbnail cache files
 Thumbs.db
@@ -85,5 +89,5 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-docs\reverse-engineering\*
-docs\design\
+docs/reverse-engineering/*
+docs/design/*

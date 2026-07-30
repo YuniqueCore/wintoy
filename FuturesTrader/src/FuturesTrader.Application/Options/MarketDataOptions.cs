@@ -31,8 +31,8 @@ public sealed class MarketDataOptions
     /// <summary>认证授权码（AuthCode）。</summary>
     public string AuthCode { get; init; } = string.Empty;
 
-    /// <summary>CTP 行情流文件目录（CTP 要求可写，存订阅状态等）。</summary>
-    public string FlowPath { get; init; } = "./MdFlow/";
+    /// <summary>CTP 行情流文件目录（CTP 要求可写，存订阅状态等）。PostConfigure 会将相对路径绝对化。</summary>
+    public string FlowPath { get; set; } = "./MdFlow/";
 
     /// <summary>价差居中价格梯上下档位数（默认 5，对齐 CTP 5 档买卖盘）。</summary>
     public int PriceLadderLevels { get; init; } = 5;

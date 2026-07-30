@@ -52,11 +52,13 @@ public partial class App : System.Windows.Application
 
     public App()
     {
+        // 日志路径绝对化：相对路径基于 exe 目录（AppContext.BaseDirectory），避免工作目录不同导致日志丢失
+        var logPath = System.IO.Path.Combine(AppContext.BaseDirectory, "logs", "app-.log");
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Information()
             .Enrich.FromLogContext()
             .WriteTo.File(
-                path: "logs/app-.log",
+                path: logPath,
                 rollingInterval: RollingInterval.Day,
                 encoding: System.Text.Encoding.UTF8)
             .CreateLogger();
@@ -81,6 +83,24 @@ public partial class App : System.Windows.Application
                 services.Configure<LoginOptions>(ctx.Configuration.GetSection("Login"));
                 services.Configure<UiOptions>(ctx.Configuration.GetSection("Ui"));
                 services.Configure<SoundOptions>(ctx.Configuration.GetSection("Sound"));
+
+                // ── 路径绝对化 PostConfigure：将 appsettings.json 中的相对路径基于 exe 目录解析为绝对路径。
+                //    确保无论从哪个工作目录启动（双击/计划任务/命令行），配置/数据/音效/流文件路径都能正确解析。
+                services.PostConfigure<ConfigFileOptions>(o => o.Path = ResolvePath(o.Path));
+                services.PostConfigure<WindowLayoutOptions>(o =>
+                {
+                    o.UsersXmlPath = ResolvePath(o.UsersXmlPath);
+                    o.GroupsJsonPath = ResolvePath(o.GroupsJsonPath);
+                });
+                services.PostConfigure<LoginOptions>(o =>
+                {
+                    o.HqAddressXmlPath = ResolvePath(o.HqAddressXmlPath);
+                    o.UsersXmlPath = ResolvePath(o.UsersXmlPath);
+                    o.ConfigIniPath = ResolvePath(o.ConfigIniPath);
+                });
+                services.PostConfigure<SoundOptions>(o => o.BasePath = ResolvePath(o.BasePath));
+                services.PostConfigure<MarketDataOptions>(o => o.FlowPath = ResolvePath(o.FlowPath));
+                services.PostConfigure<TradingOptions>(o => o.FlowPath = ResolvePath(o.FlowPath));
 
                 // ── 配置 / 持久化仓库 ──
                 services.AddSingleton<IConfigRepository, ConfigRepository>();
@@ -205,7 +225,10 @@ public partial class App : System.Windows.Application
 
         await _host.StartAsync();
 
-        // 2. 应用持久化主题
+        // 2. 确保 CTP 流文件目录存在（MdFlow/TraderFlow），CTP API 需要可写目录存储会话流
+        EnsureFlowDirectories();
+
+        // 3. 应用持久化主题
         var themeService = _host.Services.GetRequiredService<IThemeService>();
         if (themeService is ThemeService ts)
             ts.Apply(ts.LoadPersisted());
@@ -220,6 +243,48 @@ public partial class App : System.Windows.Application
         loginWindow.Show();
 
         base.OnStartup(e);
+    }
+
+    /// <summary>
+    /// 将相对路径基于 exe 目录（<see cref="AppContext.BaseDirectory"/>）解析为绝对路径。
+    /// 绝对路径原样返回；null/空返回空串。确保无论从哪个工作目录启动，文件路径都能正确解析。
+    /// </summary>
+    private static string ResolvePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return string.Empty;
+        return System.IO.Path.IsPathRooted(path)
+            ? path
+            : System.IO.Path.GetFullPath(System.IO.Path.Combine(AppContext.BaseDirectory, path));
+    }
+
+    /// <summary>
+    /// 确保 CTP 行情/交易流文件目录存在。CTP API 的 FlowPath 需要可写目录存储会话流文件，
+    /// 目录缺失会导致 RegisterFront/Subscribe 行为异常。PostConfigure 已将路径绝对化。
+    /// </summary>
+    private void EnsureFlowDirectories()
+    {
+        try
+        {
+            var mdOpts = _host.Services.GetRequiredService<IOptions<MarketDataOptions>>().Value;
+            var trOpts = _host.Services.GetRequiredService<IOptions<TradingOptions>>().Value;
+            EnsureDirectory(mdOpts.FlowPath, "MdFlow");
+            EnsureDirectory(trOpts.FlowPath, "TraderFlow");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "创建 CTP 流文件目录失败（将继续启动，CTP 连接时可能报错）");
+        }
+    }
+
+    /// <summary>确保目录存在，不存在则创建（含父目录）。</summary>
+    private static void EnsureDirectory(string? path, string label)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        if (!System.IO.Directory.Exists(path))
+        {
+            System.IO.Directory.CreateDirectory(path);
+            Log.Information("已创建 CTP 流目录 [{Label}]: {Path}", label, path);
+        }
     }
 
     /// <summary>登录成功：显示浮动工具栏 + 关闭登录页。</summary>

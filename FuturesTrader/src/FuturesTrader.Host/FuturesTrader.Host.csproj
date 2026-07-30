@@ -32,16 +32,25 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <!-- CTP 6.7.11 原生行情 DLL（32 位 x86）：P/Invoke 在运行时按 DLL 名解析，必须与 exe 同目录或在 PATH -->
-    <None Include="D:\work\projs\futures\qihuo-software\thostmduserapi_se.dll"
+
+    <!-- CTP 6.7.11 原生行情 DLL（32 位 x86）：P/Invoke 按 DLL 名在 exe 同目录解析，必须平铺到输出根 -->
+    <None Include="native\thostmduserapi_se.dll"
           Link="thostmduserapi_se.dll"
           CopyToOutputDirectory="PreserveNewest"
           Visible="false" />
     <!-- CTP 6.7.11 原生交易 DLL（32 位 x86）：CtpTradingService 通过 ThostTraderApiNative P/Invoke 调用 -->
-    <None Include="D:\work\projs\futures\qihuo-software\thosttraderapi_se.dll"
+    <None Include="native\thosttraderapi_se.dll"
           Link="thosttraderapi_se.dll"
           CopyToOutputDirectory="PreserveNewest"
           Visible="false" />
+
+    <!-- 自包含配置/数据文件：复制到输出目录 data\ 子目录，appsettings.json 用相对路径引用 -->
+    <None Include="data\config.ini"      Link="data\config.ini"      CopyToOutputDirectory="PreserveNewest" />
+    <None Include="data\Users.xml"       Link="data\Users.xml"       CopyToOutputDirectory="PreserveNewest" />
+    <None Include="data\HQAddress.xml"   Link="data\HQAddress.xml"   CopyToOutputDirectory="PreserveNewest" />
+
+    <!-- 自包含音效文件：复制到输出目录 assets\sounds\ 子目录，SoundOptions.BasePath 指向该目录 -->
+    <None Include="assets\sounds\*.wav"  Link="assets\sounds\%(FileName)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

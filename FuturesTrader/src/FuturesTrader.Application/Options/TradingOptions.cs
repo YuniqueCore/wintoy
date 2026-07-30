@@ -30,8 +30,8 @@ public sealed class TradingOptions
     /// <summary>认证授权码（AuthCode，与 AppID 配对，由期货公司分配）。</summary>
     public string AuthCode { get; init; } = string.Empty;
 
-    /// <summary>CTP 交易流文件目录（CTP 要求可写，存报单流水等）。</summary>
-    public string FlowPath { get; init; } = "./TraderFlow/";
+    /// <summary>CTP 交易流文件目录（CTP 要求可写，存报单流水等）。PostConfigure 会将相对路径绝对化。</summary>
+    public string FlowPath { get; set; } = "./TraderFlow/";
 
     /// <summary>用户产品信息（UserProductInfo，CTP 认证字段，部分期货公司校验）。</summary>
     public string UserProductInfo { get; init; } = string.Empty;
