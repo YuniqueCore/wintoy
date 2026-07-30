@@ -118,9 +118,13 @@ public sealed class CtpMarketDataService : IMarketDataService
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// 不调用 <see cref="ThrowIfDisposed"/>：Disconnect 是幂等的安全操作，
+    /// 且 <see cref="DisposeAsync"/> 会先标记 _disposed=1 再调本方法，
+    /// 若检查 _disposed 会抛 ObjectDisposedException 导致 Dispose 流程中断。
+    /// </remarks>
     public Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
-        ThrowIfDisposed();
         lock (_apiLock)
         {
             if (_apiPtr == IntPtr.Zero) return Task.CompletedTask;

@@ -18,6 +18,44 @@
         AutomationProperties.AutomationId="LoginWindow">
     <ui:FluentWindow.Resources>
         <conv:LatencyToBrushConverter x:Key="LatencyToBrush"/>
+
+        <!-- WPF 标准控件主题适配：DataGrid/ListBox 的行/单元格/列头默认用 SystemColors（白色），
+             不跟随 WPF UI 主题切换 → Dark 主题时显示白色"反色"。
+             用透明背景 + DynamicResource 前景色让 Mica 背景透过来并跟随主题。 -->
+
+        <!-- DataGrid 行：背景透明，前景跟随主题 -->
+        <Style TargetType="DataGridRow">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+
+        <!-- DataGrid 单元格：背景透明，去掉默认边框 -->
+        <Style TargetType="DataGridCell">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Padding" Value="8,0"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        </Style>
+
+        <!-- DataGrid 列头：透明背景 + 底部分隔线 -->
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlElevationBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <!-- ListBox 项：背景透明，前景跟随主题 -->
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Margin" Value="0,2"/>
+        </Style>
     </ui:FluentWindow.Resources>
 
     <Grid>
@@ -70,7 +108,11 @@
                               HeadersVisibility="Column"
                               GridLinesVisibility="Horizontal"
                               BorderThickness="0"
-                              Background="Transparent">
+                              Background="Transparent"
+                              RowBackground="Transparent"
+                              AlternatingRowBackground="Transparent"
+                              HorizontalGridLinesBrush="{DynamicResource ControlElevationBorderBrush}"
+                              Foreground="{DynamicResource TextFillColorPrimaryBrush}">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="100"/>
                             <DataGridTextColumn Header="地址" Binding="{Binding Url}" Width="*"/>
@@ -103,7 +145,8 @@
                         </Grid.RowDefinitions>
                         <ListBox x:Name="AccountList" Grid.Row="0" ItemsSource="{Binding Accounts}"
                                  SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
-                                 Background="Transparent" BorderThickness="0" Padding="4">
+                                 Background="Transparent" BorderThickness="0" Padding="4"
+                                 Foreground="{DynamicResource TextFillColorPrimaryBrush}">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Margin="4,2">
@@ -182,7 +225,7 @@
                 <ui:PasswordBox Grid.Column="1" x:Name="PasswordBox"
                                 PlaceholderText="输入密码"
                                 PasswordChanged="OnPasswordChanged"
-                                MaxWidth="400" HorizontalAlignment="Left"/>
+                                MaxWidth="640" HorizontalAlignment="Stretch"/>
 
                 <!-- 设置按钮 -->
                 <ui:Button Grid.Column="2" Content="设置"

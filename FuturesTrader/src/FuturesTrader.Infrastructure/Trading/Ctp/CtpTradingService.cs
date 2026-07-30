@@ -138,9 +138,13 @@ public sealed class CtpTradingService : ITradingService
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// 不调用 <see cref="ThrowIfDisposed"/>：Disconnect 是幂等的安全操作，
+    /// 且 <see cref="DisposeAsync"/> 可能已标记 _disposed=1，
+    /// 若检查 _disposed 会抛 ObjectDisposedException 导致 Dispose 流程中断。
+    /// </remarks>
     public Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
-        ThrowIfDisposed();
         lock (_apiLock)
         {
             if (_apiPtr == IntPtr.Zero) return Task.CompletedTask;
@@ -354,11 +358,11 @@ public sealed class CtpTradingService : ITradingService
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (_disposed == 1) return;
-        // 先断开（_disposed 仍为 0，ThrowIfDisposed 不触发），后标记已释放（原子操作防重入）
+        // 原子标记：确保并发调用时只有一个线程进入断开逻辑。
+        // DisconnectAsync 已移除 ThrowIfDisposed，不会因 _disposed=1 抛异常。
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         try { await DisconnectAsync().ConfigureAwait(false); }
         catch (Exception ex) { _logger.LogWarning(ex, "Dispose 时 Disconnect 异常"); }
-        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         _orders.OnCompleted();
         _trades.OnCompleted();
         _connection.OnCompleted();

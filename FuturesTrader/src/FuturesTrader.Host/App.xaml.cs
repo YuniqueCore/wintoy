@@ -242,7 +242,8 @@ public partial class App : System.Windows.Application
 
         // 3. 应用持久化主题
         var themeService = _host.Services.GetRequiredService<IThemeService>();
-        if (themeService is ThemeService ts)
+        var ts = themeService as ThemeService;
+        if (ts is not null)
             ts.Apply(ts.LoadPersisted());
         else
             themeService.Apply(ApplicationTheme.Dark);
@@ -253,6 +254,11 @@ public partial class App : System.Windows.Application
         loginVm.LoginSucceeded += OnLoginSucceeded;
         loginVm.OpenSettingsRequested += OnOpenSettingsRequested;
         loginWindow.Show();
+
+        // 4. 设置 LoginWindow 的 Mica 暗模式（必须在 Show 之后，HWND 已创建）
+        //    Apply 在 Show 之前调用，此时 LoginWindow 不在 Application.Windows 中，
+        //    SetWindowDarkMode 被跳过 → 需要单独补设。
+        ts?.ApplyWindowDarkMode(loginWindow);
 
         base.OnStartup(e);
     }
@@ -309,6 +315,9 @@ public partial class App : System.Windows.Application
             floating.ViewModel.OpenSettingsRequested += OnOpenSettingsRequested;
             floating.Show();
 
+            // FloatingMainWindow 是普通 Window + 显式 ApplicationBackgroundBrush 背景,
+            // 不显示 Mica backdrop,主题切换由 WPF 资源自动跟随,无需补设暗模式。
+
             var loginWindow = _host.Services.GetRequiredService<LoginWindow>();
             loginWindow.Hide();
         });
@@ -344,6 +353,11 @@ public partial class App : System.Windows.Application
                 settings.Owner = active;
             }
             settings.Show();
+
+            // 设置 SettingsWindow 的 Mica 暗模式（新窗口 Show 后补设）
+            if (_host.Services.GetRequiredService<IThemeService>() is ThemeService ts)
+                ts.ApplyWindowDarkMode(settings);
+
             Log.Information("设置窗口已打开");
         });
     }
