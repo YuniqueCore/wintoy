@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace FuturesTrader.Infrastructure.MarketData.Ctp.Native;
 
 /// <summary>
-/// CTP 行情 API（<c>CThostFtdcMdApi</c>）的 P/Invoke 封装：直连 <c>thostmduserapi_se.dll</c>（6.7.11，32 位 x86）。
+/// CTP 行情 API（<c>CThostFtdcMdApi</c>）的 P/Invoke 封装：直连 <c>thostmduserapi_se.dll</c>（6.7.13，64 位 x64）。
 /// <para>
 /// CTP API 是 C++ 虚函数接口，无法直接 P/Invoke。本类通过两条路径访问：
 /// <list type="number">
@@ -43,12 +43,12 @@ internal static class ThostMdApiNative
 {
     private const string DllName = "thostmduserapi_se.dll";
 
-    /// <summary>MSVC mangled name，已通过 DLL 二进制扫描实证：4 参数（flowPath + 3 bools）。</summary>
+    /// <summary>MSVC x64 mangled name（PE 导出表实证）：4 参数（flowPath + 3 bools）。</summary>
     private const string CreateFtdcMdApiEntryPoint =
-        "?CreateFtdcMdApi@CThostFtdcMdApi@@SAPAV1@PBD_N1_N@Z";
+        "?CreateFtdcMdApi@CThostFtdcMdApi@@SAPEAV1@PEBD_N1_N@Z";
 
     private const string GetApiVersionEntryPoint =
-        "?GetApiVersion@CThostFtdcMdApi@@SAPBDXZ";
+        "?GetApiVersion@CThostFtdcMdApi@@SAPEBDXZ";
 
     // ===== 静态工厂（Cdecl，无 this 指针） =====
 
@@ -69,14 +69,20 @@ internal static class ThostMdApiNative
     public static IntPtr CreateFtdcMdApi(string flowPath) =>
         CreateFtdcMdApiNative(flowPath ?? string.Empty, false, false, false);
 
-    /// <summary>获取 API 版本字符串（静态，Cdecl）。返回 const char* 指向 DLL 内静态缓冲。</summary>
+    /// <summary>
+    /// 获取 API 版本字符串（静态，Cdecl）。返回 const char* 指向 DLL 内静态缓冲。
+    /// 用 <see cref="IntPtr"/> 接收而非 <c>LPStr</c> marshaller（后者在 .NET 10 预览版触发堆损坏 0xC0000374）。
+    /// </summary>
     [DllImport(DllName, EntryPoint = GetApiVersionEntryPoint,
         CallingConvention = CallingConvention.Cdecl)]
-    [return: MarshalAs(UnmanagedType.LPStr)]
-    private static extern string? GetApiVersionNative();
+    private static extern IntPtr GetApiVersionNative();
 
-    /// <summary>公开包装：返回形如 "v6.7.11_xxx" 的版本号。</summary>
-    public static string GetApiVersion() => GetApiVersionNative() ?? "unknown";
+    /// <summary>公开包装：返回形如 "v6.7.13_xxx" 的版本号。</summary>
+    public static string GetApiVersion()
+    {
+        IntPtr ptr = GetApiVersionNative();
+        return ptr == IntPtr.Zero ? "unknown" : Marshal.PtrToStringAnsi(ptr) ?? "unknown";
+    }
 
     // ===== CThostFtdcMdApi vtable 索引（注释见类注释） =====
 
@@ -127,9 +133,9 @@ internal static class ThostMdApiNative
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     public delegate int JoinDelegate(IntPtr thisPtr);
 
+    // 返回 const char* 用 IntPtr 接收（避免 LPStr marshaller 在 .NET 10 预览版堆损坏）
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    [return: MarshalAs(UnmanagedType.LPStr)]
-    public delegate string GetTradingDayDelegate(IntPtr thisPtr);
+    public delegate IntPtr GetTradingDayDelegate(IntPtr thisPtr);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall, CharSet = CharSet.Ansi)]
     public delegate void RegisterFrontDelegate(IntPtr thisPtr, [MarshalAs(UnmanagedType.LPStr)] string pszFrontAddress);
@@ -166,8 +172,11 @@ internal static class ThostMdApiNative
         GetVtableMethod<JoinDelegate>(apiPtr, ApiVtable.Join)(apiPtr);
 
     /// <summary>获取交易日（GBK 字符串）。返回值由 CTP 内部缓冲持有，调用方不应释放。</summary>
-    public static string GetTradingDay(IntPtr apiPtr) =>
-        GetVtableMethod<GetTradingDayDelegate>(apiPtr, ApiVtable.GetTradingDay)(apiPtr) ?? string.Empty;
+    public static string GetTradingDay(IntPtr apiPtr)
+    {
+        IntPtr ptr = GetVtableMethod<GetTradingDayDelegate>(apiPtr, ApiVtable.GetTradingDay)(apiPtr);
+        return ptr == IntPtr.Zero ? string.Empty : Marshal.PtrToStringAnsi(ptr) ?? string.Empty;
+    }
 
     public static void RegisterFront(IntPtr apiPtr, string frontAddress) =>
         GetVtableMethod<RegisterFrontDelegate>(apiPtr, ApiVtable.RegisterFront)(apiPtr, frontAddress);

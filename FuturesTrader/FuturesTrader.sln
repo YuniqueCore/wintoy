@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -32,6 +32,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FuturesTrader.Application.Tests", "tests\FuturesTrader.Application.Tests\FuturesTrader.Application.Tests.csproj", "{16147734-3EED-4CE2-93E9-56AF97B4F695}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FuturesTrader.Presentation.Tests", "tests\FuturesTrader.Presentation.Tests\FuturesTrader.Presentation.Tests.csproj", "{255567C6-3684-4D7A-A93B-F7C240C662F3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FuturesTrader.UiAutomationTests", "tests\FuturesTrader.UiAutomationTests\FuturesTrader.UiAutomationTests.csproj", "{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -187,6 +189,18 @@ Global
 		{255567C6-3684-4D7A-A93B-F7C240C662F3}.Release|x64.Build.0 = Release|Any CPU
 		{255567C6-3684-4D7A-A93B-F7C240C662F3}.Release|x86.ActiveCfg = Release|Any CPU
 		{255567C6-3684-4D7A-A93B-F7C240C662F3}.Release|x86.Build.0 = Release|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Debug|x64.Build.0 = Debug|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Debug|x86.Build.0 = Debug|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Release|x64.ActiveCfg = Release|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Release|x64.Build.0 = Release|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Release|x86.ActiveCfg = Release|Any CPU
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -204,5 +218,6 @@ Global
 		{B5084E8D-973D-4A97-A434-C7F21013F04E} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{16147734-3EED-4CE2-93E9-56AF97B4F695} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{255567C6-3684-4D7A-A93B-F7C240C662F3} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{7FC315CA-BEF4-4F3A-8B4F-EA44815308F7} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

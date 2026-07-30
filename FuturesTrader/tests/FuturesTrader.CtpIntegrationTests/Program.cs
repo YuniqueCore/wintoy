@@ -3,13 +3,15 @@ using FuturesTrader.Application.Options;
 using FuturesTrader.Domain.MarketData;
 using FuturesTrader.Domain.Trading;
 using FuturesTrader.Infrastructure.MarketData.Ctp;
+using FuturesTrader.Infrastructure.MarketData.Ctp.Native;
 using FuturesTrader.Infrastructure.Trading.Ctp;
+using FuturesTrader.Infrastructure.Trading.Ctp.Native;
 using Microsoft.Extensions.Logging;
 
 namespace FuturesTrader.CtpIntegrationTests;
 
 /// <summary>
-/// CTP 实机集成测试：直连 60.12.233.58 测试环境，验证完整链路：
+/// CTP 实机集成测试：直连测试系统（60.12.233.58），验证完整链路：
 /// 行情连接→认证→订阅→数据解析→价格梯 / 交易连接→认证→登录→结算确认→持仓/资金/合约查询。
 /// <para>
 /// 测试凭据：BrokerID=8080 UserID=000102 Password=258147 AppID=client_qihuo159_1.0 AuthCode=AC2F6ESEXEEYSIGU
@@ -67,6 +69,28 @@ internal static class Program
         };
 
         var allPassed = true;
+
+        // ── 0. DLL 版本验证（确认 64 位入口点修复正确）──
+        Console.WriteLine(">>> [0/5] DLL 版本验证（64 位入口点）");
+        try
+        {
+            var traderVer = ThostTraderApiNative.GetApiVersion();
+            var mdVer = ThostMdApiNative.GetApiVersion();
+            Console.WriteLine($"  TraderApi: {traderVer}");
+            Console.WriteLine($"  MdApi: {mdVer}");
+            if (traderVer.StartsWith("v") && mdVer.StartsWith("v"))
+                Console.WriteLine("  PASS: 64 位 DLL 入口点调用成功");
+            else
+            {
+                Console.WriteLine("  WARN: 版本号格式异常");
+                allPassed = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"  FAIL: {ex.Message}");
+            allPassed = false;
+        }
 
         // ── 1. 行情连接测试 ──
         Console.WriteLine(">>> [1/4] 行情服务连接 + 认证");

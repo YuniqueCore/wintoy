@@ -13,7 +13,8 @@
         WindowStartupLocation="CenterOwner"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica"
-        WindowCornerPreference="Round">
+        WindowCornerPreference="Round"
+        AutomationProperties.AutomationId="SettingsWindow">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>

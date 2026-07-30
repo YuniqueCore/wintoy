@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace FuturesTrader.Infrastructure.Trading.Ctp;
 
 /// <summary>
-/// <see cref="ITradingService"/> 的 CTP 实现：直连 <c>thosttraderapi_se.dll</c> 6.7.11。
+/// <see cref="ITradingService"/> 的 CTP 实现：直连 <c>thosttraderapi_se.dll</c> 6.7.13。
 /// 完整链路：CreateFtdcTraderApi → RegisterSpi → SubscribePrivateTopic/PublicTopic → RegisterFront → Init →
 /// OnFrontConnected → ReqAuthenticate(BrokerID/UserID/AppID/AuthCode) → OnRspAuthenticate →
 /// ReqUserLogin(BrokerID/UserID/Password) → OnRspUserLogin → ReqSettlementInfoConfirm →
@@ -354,9 +354,11 @@ public sealed class CtpTradingService : ITradingService
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        if (_disposed == 1) return;
+        // 先断开（_disposed 仍为 0，ThrowIfDisposed 不触发），后标记已释放（原子操作防重入）
         try { await DisconnectAsync().ConfigureAwait(false); }
         catch (Exception ex) { _logger.LogWarning(ex, "Dispose 时 Disconnect 异常"); }
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         _orders.OnCompleted();
         _trades.OnCompleted();
         _connection.OnCompleted();

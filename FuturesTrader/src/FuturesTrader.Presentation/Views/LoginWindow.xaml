@@ -14,7 +14,8 @@
         WindowStartupLocation="CenterScreen"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica"
-        WindowCornerPreference="Round">
+        WindowCornerPreference="Round"
+        AutomationProperties.AutomationId="LoginWindow">
     <ui:FluentWindow.Resources>
         <conv:LatencyToBrushConverter x:Key="LatencyToBrush"/>
     </ui:FluentWindow.Resources>
@@ -61,7 +62,8 @@
                 <!-- 行情地址 DataGrid -->
                 <Border Grid.Row="1" BorderBrush="{DynamicResource ControlElevationBorderBrush}"
                         BorderThickness="1" CornerRadius="6">
-                    <DataGrid ItemsSource="{Binding MarketAddresses}"
+                    <DataGrid x:Name="MarketAddressGrid"
+                              ItemsSource="{Binding MarketAddresses}"
                               SelectedItem="{Binding SelectedMarketAddress, Mode=TwoWay}"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
@@ -99,7 +101,7 @@
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        <ListBox Grid.Row="0" ItemsSource="{Binding Accounts}"
+                        <ListBox x:Name="AccountList" Grid.Row="0" ItemsSource="{Binding Accounts}"
                                  SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
                                  Background="Transparent" BorderThickness="0" Padding="4">
                             <ListBox.ItemTemplate>

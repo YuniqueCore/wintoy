@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace FuturesTrader.Infrastructure.MarketData.Ctp;
 
 /// <summary>
-/// <see cref="IMarketDataService"/> 的 CTP 实现：直连 <c>thostmduserapi_se.dll</c> 6.7.11。
+/// <see cref="IMarketDataService"/> 的 CTP 实现：直连 <c>thostmduserapi_se.dll</c> 6.7.13。
 /// 完整链路：CreateFtdcMdApi → RegisterSpi(<see cref="CtpMdSpiBridge"/>) → RegisterFront → Init →
 /// OnFrontConnected → ReqUserLogin → OnRspUserLogin → Connected → SubscribeMarketData →
 /// OnRtnDepthMarketData → 映射为 <see cref="DepthMarketData"/> → <see cref="MarketDataStream"/>。
@@ -92,7 +92,7 @@ public sealed class CtpMarketDataService : IMarketDataService
             _spi.RspError += OnRspError;
             _spi.DepthMarketDataReceived += OnDepthMarketData;
 
-            // 3. 创建 API 实例（CreateFtdcMdApi 在 6.7.11 是 4 参数）
+            // 3. 创建 API 实例（CreateFtdcMdApi 在 6.7.13 是 4 参数）
             _apiPtr = ThostMdApiNative.CreateFtdcMdApi(_options.FlowPath);
             if (_apiPtr == IntPtr.Zero)
             {

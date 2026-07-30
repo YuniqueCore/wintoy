@@ -13,6 +13,8 @@
   <ItemGroup>
     <!-- 测试需访问 CtpMdSpiBridge 等 internal 类型以验证 vtable 内存布局 -->
     <InternalsVisibleTo Include="FuturesTrader.Infrastructure.Tests" />
+    <!-- CTP 实机集成测试需访问 ThostTraderApiNative/ThostMdApiNative.GetApiVersion 验证 64 位入口点 -->
+    <InternalsVisibleTo Include="FuturesTrader.CtpIntegrationTests" />
   </ItemGroup>
 
   <PropertyGroup>
