@@ -44,6 +44,20 @@ public sealed class StubWindowHost : IWindowHost
         stub.Show();
     });
 
+    public void OpenGroup(IReadOnlyList<InstrumentWindow> windows, int groupId) => OnUi(() =>
+    {
+        foreach (var w in windows) Open(w);
+    });
+
+    public IReadOnlyList<string> GetOpenWindowsInGroup(int groupId) =>
+        _open.Keys.ToList();
+
+    public void CloseGroup(int groupId) => OnUi(() =>
+    {
+        foreach (var key in _open.Keys.ToList())
+            _open[key].Close();
+    });
+
     public void Focus(string instrumentCode) => OnUi(() =>
     {
         if (_open.TryGetValue(instrumentCode, out var w))

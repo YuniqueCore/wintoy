@@ -60,12 +60,23 @@ public sealed partial class PriceListControl : UserControl
             new PropertyMetadata(3));
 
     /// <summary>
-    /// 价位点击路由事件：点击价格梯某行时冒泡，携带该行价格。
-    /// 对齐 0527.exe TPointWindow：点击价位 → 设置下单价格（LimitPrice）。
+    /// 价位左键点击路由事件：点击价格梯某行时冒泡，携带该行价格 + 区域。
+    /// 对齐 0527.exe TPointWindow：左键点击价位 → 按 ValLeft 量挂单（红区挂空单/蓝区挂多单）。
     /// </summary>
     public static readonly RoutedEvent PriceSelectedEvent =
         EventManager.RegisterRoutedEvent(
             nameof(PriceSelected),
+            RoutingStrategy.Bubble,
+            typeof(EventHandler<PriceSelectedEventArgs>),
+            typeof(PriceListControl));
+
+    /// <summary>
+    /// 价位右键点击路由事件：右键点击价格梯某行时冒泡，携带该行价格 + 区域。
+    /// 对齐 0527.exe TPointWindow：右键点击价位 → 按 ValRight 量挂单（新手禁用）。
+    /// </summary>
+    public static readonly RoutedEvent PriceRightClickedEvent =
+        EventManager.RegisterRoutedEvent(
+            nameof(PriceRightClicked),
             RoutingStrategy.Bubble,
             typeof(EventHandler<PriceSelectedEventArgs>),
             typeof(PriceListControl));
@@ -75,11 +86,18 @@ public sealed partial class PriceListControl : UserControl
         InitializeComponent();
     }
 
-    /// <summary>价位被点击时触发（携带该行价格，供宿主窗口设置下单 LimitPrice）。</summary>
+    /// <summary>价位左键被点击时触发（携带该行价格 + 区域，供宿主按 ValLeft 量下单）。</summary>
     public event EventHandler<PriceSelectedEventArgs> PriceSelected
     {
         add => AddHandler(PriceSelectedEvent, value);
         remove => RemoveHandler(PriceSelectedEvent, value);
+    }
+
+    /// <summary>价位右键被点击时触发（携带该行价格 + 区域，供宿主按 ValRight 量下单）。</summary>
+    public event EventHandler<PriceSelectedEventArgs> PriceRightClicked
+    {
+        add => AddHandler(PriceRightClickedEvent, value);
+        remove => RemoveHandler(PriceRightClickedEvent, value);
     }
 
     /// <summary>价格梯数据（行情刷新时整体替换）。</summary>
@@ -147,19 +165,34 @@ public sealed partial class PriceListControl : UserControl
     }
 
     /// <summary>
-    /// 价格梯行点击：从命中元素向上遍历视觉树找到 <see cref="PriceLevel"/> DataContext，
-    /// 触发 <see cref="PriceSelectedEvent"/> 冒泡。对齐 0527.exe TPointWindow 点价设价交互。
+    /// 价格梯行左键点击：从命中元素向上遍历视觉树找到 <see cref="PriceLevel"/> DataContext，
+    /// 触发 <see cref="PriceSelectedEvent"/> 冒泡（携带价格 + 区域）。左键 = ValLeft 量挂单。
     /// </summary>
-    private void OnPriceRowClick(object sender, MouseButtonEventArgs e)
+    private void OnPriceRowLeftClick(object sender, MouseButtonEventArgs e)
+    {
+        RaisePriceEvent(e, PriceSelectedEvent);
+    }
+
+    /// <summary>
+    /// 价格梯行右键点击：触发 <see cref="PriceRightClickedEvent"/> 冒泡。右键 = ValRight 量挂单（新手禁用）。
+    /// </summary>
+    private void OnPriceRowRightClick(object sender, MouseButtonEventArgs e)
+    {
+        RaisePriceEvent(e, PriceRightClickedEvent);
+    }
+
+    /// <summary>从命中元素向上遍历视觉树找到 PriceLevel，触发指定路由事件。</summary>
+    private void RaisePriceEvent(MouseButtonEventArgs e, RoutedEvent evt)
     {
         var source = e.OriginalSource as DependencyObject;
         while (source is not null && !ReferenceEquals(source, this))
         {
             if (source is FrameworkElement fe && fe.DataContext is PriceLevel level)
             {
-                RaiseEvent(new PriceSelectedEventArgs(PriceSelectedEvent, this)
+                RaiseEvent(new PriceSelectedEventArgs(evt, this)
                 {
-                    Price = level.Price
+                    Price = level.Price,
+                    Zone = level.Zone
                 });
                 e.Handled = true;
                 return;
@@ -169,11 +202,14 @@ public sealed partial class PriceListControl : UserControl
     }
 }
 
-/// <summary>价位点击事件参数：携带被点击行的价格。</summary>
+/// <summary>价位点击事件参数：携带被点击行的价格 + 区域。</summary>
 public sealed class PriceSelectedEventArgs : RoutedEventArgs
 {
     public PriceSelectedEventArgs(RoutedEvent routedEvent, object source) : base(routedEvent, source) { }
 
     /// <summary>被点击行的价格（已按 PriceTick 对齐）。</summary>
     public decimal Price { get; init; }
+
+    /// <summary>被点击行所属区域（Ask 空单区 / Center 中心 / Bid 多单区）。</summary>
+    public PriceZone Zone { get; init; }
 }

@@ -18,4 +18,7 @@ public sealed record PriceLevel
 
     /// <summary>是否为最新价中心行。</summary>
     public bool IsLastPrice { get; init; }
+
+    /// <summary>所属区域：Ask(上方空单区)/Center/Bid(下方多单区)。由 ToPriceLadder 构造时设置。</summary>
+    public PriceZone Zone { get; init; }
 }

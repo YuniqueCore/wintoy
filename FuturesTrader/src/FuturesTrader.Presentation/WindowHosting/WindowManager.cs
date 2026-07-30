@@ -1,38 +1,53 @@
 using System.Windows;
 using FuturesTrader.Application.Abstractions;
+using FuturesTrader.Application.Options;
 using FuturesTrader.Domain.WindowGroups;
 using FuturesTrader.Presentation.Abstractions;
 using FuturesTrader.Presentation.ViewModels;
 using FuturesTrader.Presentation.Views;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace FuturesTrader.Presentation.WindowHosting;
 
 /// <summary>
-/// <see cref="IWindowHost"/> 的真实实现：用 <see cref="TradingWindow"/>（TYYWin 复刻）替换 <see cref="StubWindowHost"/>。
-/// 注入 <see cref="IServiceProvider"/>（用 <c>ActivatorUtilities</c> 创建每合约 VM）+ <see cref="IKeyboardOperationService"/>。
-/// <see cref="Open(InstrumentWindow)"/>：已开则 <c>Activate</c>；否则构造 <see cref="TradingViewModel"/>（合约码作为构造参数）
-/// → <c>new TradingWindow(keyboard){Title, Width, Height, Top, Left, DataContext=vm}</c> → 记入字典 → <c>Show()</c>。
+/// <see cref="IWindowHost"/> 的真实实现：用 <see cref="TradingWindow"/>（TYYWin 复刻）管理合约窗口。
+/// <para>
+/// <see cref="Open"/>：已开则 <c>Activate</c>；否则构造 <see cref="TradingViewModel"/> → <see cref="TradingWindow"/> → 记入字典 → <c>Show()</c>。
+/// <see cref="OpenGroup"/>：循环 <see cref="Open"/> + 水平紧密排列（无重叠：window.Left = prev.Right + CompactSpacing）+ 注册到 <see cref="GroupSynchronizationCoordinator"/>。
+/// </para>
+/// <para>
 /// 全部 <see cref="Dispatcher.Invoke"/> 包裹：MCP HTTP 线程触发时 marshalled 到 UI 线程，避免跨线程异常。
-/// TradingWindow 关闭时由其 OnClosing Dispose ViewModel（退订行情），Closed 事件移除字典项。
+/// TradingWindow 关闭时由其 OnClosing Dispose ViewModel（退订行情），Closed 事件移除字典项 + 注销同步。
+/// </para>
 /// </summary>
 public sealed class WindowManager : IWindowHost
 {
     private readonly IServiceProvider _services;
     private readonly IKeyboardOperationService _keyboard;
+    private readonly GroupSynchronizationCoordinator _sync;
+    private readonly UiOptions _uiOptions;
     private readonly ILogger<WindowManager> _logger;
-    private readonly Dictionary<string, Window> _open = new(StringComparer.Ordinal);
+
+    /// <summary>已打开窗口字典：合约码 → 窗口 + 分组号。用于 Open 去重 + CloseGroup 索引。</summary>
+    private readonly Dictionary<string, TrackedOpen> _open = new(StringComparer.Ordinal);
 
     public WindowManager(
         IServiceProvider services,
         IKeyboardOperationService keyboard,
+        GroupSynchronizationCoordinator sync,
+        IOptions<UiOptions> uiOptions,
         ILogger<WindowManager> logger)
     {
         _services = services;
         _keyboard = keyboard;
+        _sync = sync;
+        _uiOptions = uiOptions.Value;
         _logger = logger;
     }
+
+    private sealed record TrackedOpen(Window Window, int GroupId);
 
     /// <inheritdoc />
     public bool IsOpen(string instrumentCode)
@@ -51,18 +66,17 @@ public sealed class WindowManager : IWindowHost
         {
             if (_open.TryGetValue(window.InstrumentCode, out var existing))
             {
-                existing.Activate();
+                existing.Window.Activate();
                 return;
             }
         }
 
-        // 用 ActivatorUtilities 创建 TradingViewModel：合约码作为首参，其余从 DI 解析
         var vm = (TradingViewModel)ActivatorUtilities.CreateInstance(
-            _services, typeof(TradingViewModel), window.InstrumentCode);
+            _services, typeof(TradingViewModel), window);
 
         var tradingWindow = new TradingWindow(_keyboard)
         {
-            Title = $"{window.InstrumentCode} · 组 {window.GroupId}",
+            Title = BuildTitle(window),
             Width = Math.Max(window.Width, 320),
             Height = Math.Max(window.Height, 480),
             Left = window.Left,
@@ -70,24 +84,83 @@ public sealed class WindowManager : IWindowHost
             DataContext = vm
         };
 
+        var groupId = window.GroupId;
         tradingWindow.Closed += (_, _) =>
         {
-            lock (_open) _open.Remove(window.InstrumentCode);
-            _logger.LogInformation("合约窗口已关闭: {Instrument}", window.InstrumentCode);
+            // 窗口关闭时回写 33 字段配置（供后续持久化到 Users.xml）
+            try
+            {
+                var updated = vm.ToInstrumentWindow();
+                lock (_open) _open.Remove(window.InstrumentCode);
+                _sync.Unregister(tradingWindow, groupId);
+                _logger.LogInformation("合约窗口已关闭: {Instrument}", window.InstrumentCode);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "回写窗口配置失败: {Instrument}", window.InstrumentCode);
+            }
         };
 
-        lock (_open) _open[window.InstrumentCode] = tradingWindow;
+        lock (_open) _open[window.InstrumentCode] = new TrackedOpen(tradingWindow, groupId);
+        _sync.Register(tradingWindow, groupId);
         tradingWindow.Show();
-        _logger.LogInformation("合约窗口已打开: {Instrument} (组 {Group})", window.InstrumentCode, window.GroupId);
+        _logger.LogInformation("合约窗口已打开: {Instrument} (组 {Group})", window.InstrumentCode, groupId);
     });
+
+    /// <inheritdoc />
+    public void OpenGroup(IReadOnlyList<InstrumentWindow> windows, int groupId) => OnUi(() =>
+    {
+        if (windows.Count == 0)
+        {
+            _logger.LogInformation("分组 {GroupId} 无窗口", groupId);
+            return;
+        }
+
+        // 水平紧密排列起始点：屏幕工作区底部上方（浮动栏之上），左对齐
+        var workArea = SystemParameters.WorkArea;
+        var startX = workArea.Left + 8;
+        var startY = workArea.Top + 8;
+        var spacing = _uiOptions.CompactSpacing;
+        var currentX = startX;
+
+        foreach (var w in windows)
+        {
+            // 首次打开的窗口按紧密排列设置 Left/Top；已打开的保持原位
+            if (!IsOpen(w.InstrumentCode))
+            {
+                var arranged = w with { Left = (int)currentX, Top = (int)startY };
+                currentX += Math.Max(arranged.Width, 320) + spacing;
+                Open(arranged);
+            }
+            else
+            {
+                Open(w);
+            }
+        }
+
+        _logger.LogInformation("已打开分组 {GroupId} 的 {Count} 个窗口（水平紧密排列）",
+            groupId, windows.Count);
+    });
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> GetOpenWindowsInGroup(int groupId)
+    {
+        lock (_open)
+        {
+            return _open
+                .Where(kv => kv.Value.GroupId == groupId)
+                .Select(kv => kv.Key)
+                .ToArray();
+        }
+    }
 
     /// <inheritdoc />
     public void Focus(string instrumentCode) => OnUi(() =>
     {
         lock (_open)
         {
-            if (_open.TryGetValue(instrumentCode, out var w))
-                w.Activate();
+            if (_open.TryGetValue(instrumentCode, out var t))
+                t.Window.Activate();
         }
     });
 
@@ -96,13 +169,33 @@ public sealed class WindowManager : IWindowHost
     {
         lock (_open)
         {
-            if (_open.TryGetValue(instrumentCode, out var w))
-                w.Close();
+            if (_open.TryGetValue(instrumentCode, out var t))
+                t.Window.Close();
         }
     });
 
-    /// <summary>在 UI 线程执行；无 WPF 应用上下文时（如单元测试）直接内联执行。
-    /// 用完全限定 System.Windows.Application 避免与 FuturesTrader.Application 命名空间冲突。</summary>
+    /// <inheritdoc />
+    public void CloseGroup(int groupId) => OnUi(() =>
+    {
+        List<Window> toClose;
+        lock (_open)
+        {
+            toClose = _open
+                .Where(kv => kv.Value.GroupId == groupId)
+                .Select(kv => kv.Value.Window)
+                .ToList();
+        }
+        foreach (var w in toClose) w.Close();
+        _logger.LogInformation("已关闭分组 {GroupId} 的 {Count} 个窗口", groupId, toClose.Count);
+    });
+
+    /// <summary>构造窗口标题：合约码 · 组号（期权场景由 ContractWindowViewModel M4-C 扩展持续时间）。</summary>
+    private static string BuildTitle(InstrumentWindow window)
+    {
+        return $"{window.InstrumentCode} · 组 {window.GroupId}";
+    }
+
+    /// <summary>在 UI 线程执行；无 WPF 应用上下文时（如单元测试）直接内联执行。</summary>
     private static void OnUi(Action action)
     {
         var app = System.Windows.Application.Current;

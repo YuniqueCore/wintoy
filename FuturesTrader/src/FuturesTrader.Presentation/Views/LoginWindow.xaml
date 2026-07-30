@@ -1,0 +1,202 @@
+<ui:FluentWindow x:Class="FuturesTrader.Presentation.Views.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        xmlns:vm="clr-namespace:FuturesTrader.Presentation.ViewModels"
+        xmlns:conv="clr-namespace:FuturesTrader.Presentation.Converters"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:LoginViewModel}"
+        Title="期货交易终端 · 登录"
+        Width="980" Height="620"
+        MinWidth="820" MinHeight="540"
+        WindowStartupLocation="CenterScreen"
+        ExtendsContentIntoTitleBar="True"
+        WindowBackdropType="Mica"
+        WindowCornerPreference="Round">
+    <ui:FluentWindow.Resources>
+        <conv:LatencyToBrushConverter x:Key="LatencyToBrush"/>
+    </ui:FluentWindow.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 标题栏 -->
+        <ui:TitleBar Grid.Row="0" Title="期货交易终端">
+            <ui:TitleBar.Icon>
+                <ui:SymbolIcon Symbol="Apps24"/>
+            </ui:TitleBar.Icon>
+        </ui:TitleBar>
+
+        <!-- 主体：左栏（行情+账号）+ 右栏（状态信息） -->
+        <Grid Grid.Row="1" Margin="16,4,16,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="300"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 左栏 -->
+            <Grid Grid.Column="0" Margin="0,0,12,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="180"/>
+                </Grid.RowDefinitions>
+
+                <!-- 行情服务标题 + 刷新按钮 -->
+                <DockPanel Grid.Row="0" Margin="0,0,0,6">
+                    <TextBlock DockPanel.Dock="Left" Text="行情服务" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <ui:Button DockPanel.Dock="Right" HorizontalAlignment="Right"
+                               Icon="{ui:SymbolIcon ArrowSync24}"
+                               Command="{Binding ProbeCommand}"
+                               ToolTip="重新测速" Padding="8,4"/>
+                </DockPanel>
+
+                <!-- 行情地址 DataGrid -->
+                <Border Grid.Row="1" BorderBrush="{DynamicResource ControlElevationBorderBrush}"
+                        BorderThickness="1" CornerRadius="6">
+                    <DataGrid ItemsSource="{Binding MarketAddresses}"
+                              SelectedItem="{Binding SelectedMarketAddress, Mode=TwoWay}"
+                              AutoGenerateColumns="False"
+                              IsReadOnly="True"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              BorderThickness="0"
+                              Background="Transparent">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="100"/>
+                            <DataGridTextColumn Header="地址" Binding="{Binding Url}" Width="*"/>
+                            <DataGridTemplateColumn Header="延迟" Width="80">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{Binding LatencyMs, Converter={StaticResource LatencyToBrush}}"
+                                                CornerRadius="4" Padding="10,3" HorizontalAlignment="Center"
+                                                Margin="4,2">
+                                            <TextBlock Text="{Binding LatencyMs, StringFormat={}{0:F0}ms, TargetNullValue='—'}"
+                                                       Foreground="White" FontSize="11" FontWeight="SemiBold"/>
+                                        </Border>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Border>
+
+                <!-- 账号标题 -->
+                <TextBlock Grid.Row="2" Text="交易账号" FontWeight="SemiBold" Margin="0,12,0,6"/>
+
+                <!-- 账号列表 -->
+                <Border Grid.Row="3" BorderBrush="{DynamicResource ControlElevationBorderBrush}"
+                        BorderThickness="1" CornerRadius="6">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <ListBox Grid.Row="0" ItemsSource="{Binding Accounts}"
+                                 SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
+                                 Background="Transparent" BorderThickness="0" Padding="4">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="4,2">
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding TradingAddress}" FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <!-- 交易地址延迟 -->
+                        <Border Grid.Row="1" Padding="8,6"
+                                Background="{DynamicResource ControlFillColorDefaultBrush}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="交易延迟：" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                <Border Background="{Binding TradingAddressLatency, Converter={StaticResource LatencyToBrush}}"
+                                        CornerRadius="4" Padding="8,2" Margin="6,0,0,0">
+                                    <TextBlock Text="{Binding TradingAddressLatency, StringFormat={}{0:F0}ms, TargetNullValue='未测'}"
+                                               Foreground="White" FontSize="11" FontWeight="SemiBold"/>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- 右栏：状态信息 -->
+            <ui:Card Grid.Column="1" VerticalAlignment="Stretch">
+                <StackPanel>
+                    <!-- 连接状态 -->
+                    <TextBlock Text="连接状态" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                    <ui:InfoBar Title="{Binding StatusMessage}"
+                                IsOpen="True"
+                                Severity="Information"
+                                Margin="0,0,0,12"/>
+
+                    <!-- 登录选项 -->
+                    <TextBlock Text="登录选项" FontWeight="SemiBold" Margin="0,8,0,8"/>
+                    <StackPanel Margin="0,0,0,8">
+                        <ui:ToggleSwitch Content="刷新合约" IsChecked="{Binding RefreshContracts}" Margin="0,4"/>
+                        <ui:ToggleSwitch Content="独立模式" IsChecked="{Binding Independent}" Margin="0,4"/>
+                        <ui:ToggleSwitch Content="备用" IsChecked="{Binding Backup}" Margin="0,4"/>
+                    </StackPanel>
+
+                    <!-- 运行信息占位（M4-D Settings 扩展） -->
+                    <TextBlock Text="运行信息" FontWeight="SemiBold" Margin="0,8,0,8"/>
+                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            CornerRadius="6" Padding="10,8">
+                        <StackPanel>
+                            <TextBlock Text="版本：FuturesTrader M4-A"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12"/>
+                            <TextBlock Text="CTP API: 6.7.13"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
+                            <TextBlock Text="进程：x86"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ui:Card>
+        </Grid>
+
+        <!-- 底部：密码 + 登录按钮 -->
+        <Border Grid.Row="2" Padding="16,8,16,16"
+                Background="{DynamicResource ApplicationBackgroundBrush}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- 密码 -->
+                <TextBlock Grid.Column="0" Text="密：" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <ui:PasswordBox Grid.Column="1" x:Name="PasswordBox"
+                                PlaceholderText="输入密码"
+                                PasswordChanged="OnPasswordChanged"
+                                MaxWidth="400" HorizontalAlignment="Left"/>
+
+                <!-- 设置按钮 -->
+                <ui:Button Grid.Column="2" Content="设置"
+                           Icon="{ui:SymbolIcon Settings24}"
+                           Command="{Binding OpenSettingsCommand}"
+                           Padding="16,10" Margin="12,0,0,0"
+                           VerticalAlignment="Center"/>
+
+                <!-- 登录按钮 -->
+                <ui:Button Grid.Column="3" Content="登录"
+                           Icon="{ui:SymbolIcon ArrowRight24}"
+                           Appearance="Primary"
+                           Command="{Binding LoginCommand}"
+                           Padding="24,10" Margin="8,0,0,0"
+                           VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+    </Grid>
+</ui:FluentWindow>

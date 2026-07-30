@@ -129,11 +129,14 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool IsBusy { get; private set; }
 
-    /// <summary>报单命令（绑定下单按钮）。</summary>
-    public ICommand OrderCommand { get; }
+    /// <summary>
+    /// 报单命令（绑定下单按钮）。
+    /// 暴露为 <see cref="IAsyncRelayCommand"/> 以便代码侧 <c>ExecuteAsync</c> 调用（点价挂单场景）。
+    /// </summary>
+    public IAsyncRelayCommand OrderCommand { get; }
 
     /// <summary>撤单命令（绑定撤单按钮，撤最近一笔活动报单）。</summary>
-    public ICommand CancelCommand { get; }
+    public IAsyncRelayCommand CancelCommand { get; }
 
     /// <summary>活动报单数（UI 反馈：是否有可撤报单）。</summary>
     public int ActiveOrderCount => _activeOrders.Count;
@@ -147,8 +150,8 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
     private void RefreshCommands()
     {
         if (_disposed) return;
-        ((AsyncRelayCommand)OrderCommand).NotifyCanExecuteChanged();
-        ((AsyncRelayCommand)CancelCommand).NotifyCanExecuteChanged();
+        OrderCommand.NotifyCanExecuteChanged();
+        CancelCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(ActiveOrderCount));
     }
 

@@ -48,7 +48,7 @@ public sealed record DepthMarketData
         if (levels <= 0) levels = 5;
 
         var rows = new List<PriceLevel>(levels * 2 + 1);
-        // 上方卖盘：价格从高到低，最接近 LastPrice 的在最下
+        // 上方卖盘（空单挂单区，红色）：价格从高到低，最接近 LastPrice 的在最下
         for (int i = levels; i >= 1; i--)
         {
             var price = LastPrice + i * priceTick;
@@ -56,7 +56,8 @@ public sealed record DepthMarketData
             {
                 Price = price,
                 AskVolume = VolumeAt(price, AskPrices, AskVolumes, priceTick),
-                BidVolume = 0
+                BidVolume = 0,
+                Zone = PriceZone.Ask
             });
         }
         // 中心最新价行
@@ -65,9 +66,10 @@ public sealed record DepthMarketData
             Price = LastPrice,
             IsLastPrice = true,
             AskVolume = VolumeAt(LastPrice, AskPrices, AskVolumes, priceTick),
-            BidVolume = VolumeAt(LastPrice, BidPrices, BidVolumes, priceTick)
+            BidVolume = VolumeAt(LastPrice, BidPrices, BidVolumes, priceTick),
+            Zone = PriceZone.Center
         });
-        // 下方买盘：价格从低到高，最接近 LastPrice 的在最上
+        // 下方买盘（多单挂单区，蓝色）：价格从低到高，最接近 LastPrice 的在最上
         for (int i = 1; i <= levels; i++)
         {
             var price = LastPrice - i * priceTick;
@@ -75,7 +77,8 @@ public sealed record DepthMarketData
             {
                 Price = price,
                 BidVolume = VolumeAt(price, BidPrices, BidVolumes, priceTick),
-                AskVolume = 0
+                AskVolume = 0,
+                Zone = PriceZone.Bid
             });
         }
         return new PriceLadder(levels, LastPrice, priceTick, rows);

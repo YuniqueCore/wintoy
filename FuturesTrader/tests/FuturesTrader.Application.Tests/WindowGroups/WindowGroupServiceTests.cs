@@ -263,6 +263,18 @@ public class WindowGroupServiceTests
             Opened.Add(window);
         }
 
+        public void OpenGroup(IReadOnlyList<InstrumentWindow> windows, int groupId)
+        {
+            foreach (var w in windows) Open(w);
+        }
+
+        public IReadOnlyList<string> GetOpenWindowsInGroup(int groupId) => _open.ToList();
+
+        public void CloseGroup(int groupId)
+        {
+            foreach (var code in _open.ToList()) Close(code);
+        }
+
         public void Focus(string instrumentCode) => Focused.Add(instrumentCode);
 
         public void Close(string instrumentCode)

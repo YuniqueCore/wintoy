@@ -18,9 +18,10 @@
         <GridLength x:Key="ColRatio4">2.5*</GridLength>
         <GridLength x:Key="ColRatio5">1*</GridLength>
 
-        <!-- 行模板：买卖量按颜色区分（红卖绿买，对齐国内期货习惯） -->
+        <!-- 空单挂单区行模板（上方，红色背景 #3D0000） -->
         <DataTemplate x:Key="AskRowTemplate" DataType="marketData:PriceLevel">
-            <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}">
+            <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                  Background="#3D0000">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="{StaticResource ColRatio1}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio2}"/>
@@ -32,16 +33,18 @@
                 <TextBlock Grid.Column="1" Text="" />
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="#E53935" FontWeight="Bold"/>
+                           Foreground="#FF6666" FontWeight="Bold"/>
                 <TextBlock Grid.Column="3" Text="{Binding AskVolume}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="#E53935"/>
+                           Foreground="#FFAAAA"/>
                 <TextBlock Grid.Column="4" Text="" />
             </Grid>
         </DataTemplate>
 
+        <!-- 多单挂单区行模板（下方，蓝色背景 #001F3D） -->
         <DataTemplate x:Key="BidRowTemplate" DataType="marketData:PriceLevel">
-            <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}">
+            <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                  Background="#001F3D">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="{StaticResource ColRatio1}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio2}"/>
@@ -52,15 +55,16 @@
                 <TextBlock Grid.Column="0" Text="" />
                 <TextBlock Grid.Column="1" Text="{Binding BidVolume}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="#43A047"/>
+                           Foreground="#AAAAFF"/>
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="#43A047" FontWeight="Bold"/>
+                           Foreground="#66AAFF" FontWeight="Bold"/>
                 <TextBlock Grid.Column="3" Text="" />
                 <TextBlock Grid.Column="4" Text="" />
             </Grid>
         </DataTemplate>
 
+        <!-- 中心最新价行模板（高亮 #FFC107） -->
         <DataTemplate x:Key="CenterRowTemplate" DataType="marketData:PriceLevel">
             <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
                   Background="#FFC107">
@@ -83,7 +87,7 @@
             </Grid>
         </DataTemplate>
 
-        <!-- 行模板选择器：中心行用高亮模板，上方卖盘用红模板，下方买盘用绿模板 -->
+        <!-- 行模板选择器：中心行用高亮模板，上方空单区用红模板，下方多单区用蓝模板 -->
         <local:PriceLevelTemplateSelector x:Key="RowTemplateSelector"
                                           AskTemplate="{StaticResource AskRowTemplate}"
                                           BidTemplate="{StaticResource BidRowTemplate}"
@@ -97,10 +101,11 @@
             <ItemsControl x:Name="PriceItemsControl"
                           ItemsSource="{Binding PriceLadder.Rows, RelativeSource={RelativeSource AncestorType=UserControl}}"
                           ItemTemplateSelector="{StaticResource RowTemplateSelector}"
-                          MouseLeftButtonUp="OnPriceRowClick">
+                          MouseLeftButtonUp="OnPriceRowLeftClick"
+                          MouseRightButtonUp="OnPriceRowRightClick">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
-                        <StackPanel Orientation="Vertical"/>
+                        <VirtualizingStackPanel Orientation="Vertical"/>
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
             </ItemsControl>

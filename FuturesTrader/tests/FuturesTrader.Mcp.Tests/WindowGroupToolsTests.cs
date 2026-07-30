@@ -144,6 +144,10 @@ public class WindowGroupToolsTests
 
         public bool IsOpen(string instrumentCode) => _open.Contains(instrumentCode);
         public void Open(InstrumentWindow window) { _open.Add(window.InstrumentCode); Opened.Add(window); }
+        public void OpenGroup(IReadOnlyList<InstrumentWindow> windows, int groupId)
+        { foreach (var w in windows) Open(w); }
+        public IReadOnlyList<string> GetOpenWindowsInGroup(int groupId) => _open.ToList();
+        public void CloseGroup(int groupId) { foreach (var c in _open.ToList()) Close(c); }
         public void Focus(string instrumentCode) { }
         public void Close(string instrumentCode) => _open.Remove(instrumentCode);
     }

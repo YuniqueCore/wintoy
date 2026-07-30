@@ -4,178 +4,228 @@
                  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                  xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
-                 xmlns:sys="clr-namespace:System;assembly=System.Runtime"
-                 xmlns:domain="clr-namespace:FuturesTrader.Domain.Trading;assembly=FuturesTrader.Domain"
                  xmlns:controls="clr-namespace:FuturesTrader.Presentation.Controls"
                  xmlns:vm="clr-namespace:FuturesTrader.Presentation.ViewModels"
                  mc:Ignorable="d"
                  d:DataContext="{d:DesignInstance Type=vm:TradingViewModel}"
                  Title="合约"
-                 Width="400" Height="720"
+                 Width="600" Height="780"
+                 MinWidth="480" MinHeight="540"
                  Background="#1E1E1E"
                  WindowStartupLocation="Manual"
+                 ExtendsContentIntoTitleBar="True"
+                 WindowBackdropType="Mica"
                  KeyDown="OnWindowKeyDown">
-    <ui:FluentWindow.Resources>
-        <!-- 枚举值源：ComboBox ItemsSource 绑定 Direction/OffsetFlag 枚举 -->
-        <ObjectDataProvider x:Key="DirectionValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
-            <ObjectDataProvider.MethodParameters>
-                <x:Type TypeName="domain:Direction"/>
-            </ObjectDataProvider.MethodParameters>
-        </ObjectDataProvider>
-        <ObjectDataProvider x:Key="OffsetFlagValues" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
-            <ObjectDataProvider.MethodParameters>
-                <x:Type TypeName="domain:OffsetFlag"/>
-            </ObjectDataProvider.MethodParameters>
-        </ObjectDataProvider>
-    </ui:FluentWindow.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 顶部合约摘要 -->
-        <Border Grid.Row="0" Background="#2D2D2D" Padding="10,6">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <TextBlock Text="{Binding InstrumentCode}" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding ConnectionState}" FontSize="11" Foreground="#9E9E9E" Margin="10,0,0,0" VerticalAlignment="Center"/>
+        <!-- 标题栏：合约名 + 连接状态 + 时间 -->
+        <ui:TitleBar Grid.Row="0" Title="{Binding InstrumentCode}">
+            <ui:TitleBar.Header>
+                <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
+                    <TextBlock Text="{Binding ConnectionState}" FontSize="11"
+                               Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="{Binding UpdateTime}" FontSize="11"
+                               Foreground="#9E9E9E" VerticalAlignment="Center"/>
                 </StackPanel>
-                <TextBlock Grid.Column="1" Text="{Binding UpdateTime}" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center"/>
-            </Grid>
-        </Border>
+            </ui:TitleBar.Header>
+        </ui:TitleBar>
 
-        <!-- 摘要数据条 -->
-        <Border Grid.Row="0" Margin="0,38,0,0" Background="#252526" Padding="10,4" VerticalAlignment="Bottom">
-            <UniformGrid Columns="5">
-                <StackPanel>
-                    <TextBlock Text="开盘" FontSize="10" Foreground="#9E9E9E" HorizontalAlignment="Center"/>
-                    <TextBlock Text="{Binding OpenPrice, StringFormat={}{0:0.##}}" FontSize="11" Foreground="White" HorizontalAlignment="Center"/>
+        <!-- 主体：左控制面板(220px) + 右价格梯 -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="220"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 左侧控制面板 -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
+                          Background="#252526">
+                <StackPanel Margin="8,4">
+
+                    <!-- 1. 行情信息区 -->
+                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding UpdateTime}" FontSize="11"
+                                           Foreground="#FF5050" FontWeight="Bold"/>
+                                <TextBlock Grid.Column="1" Text="涨跌幅" FontSize="10"
+                                           Foreground="#9E9E9E" HorizontalAlignment="Right"/>
+                            </Grid>
+                            <Grid Margin="0,0,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="成交量" FontSize="10" Foreground="#9E9E9E"/>
+                                    <TextBlock Text="{Binding Volume}" FontSize="11" Foreground="White"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="持仓量" FontSize="10" Foreground="#9E9E9E"/>
+                                    <TextBlock Text="{Binding OpenInterest}" FontSize="11" Foreground="White"/>
+                                </StackPanel>
+                            </Grid>
+                            <!-- 空单/多单持仓（红底/蓝底） -->
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Background="#3D0000" CornerRadius="3" Padding="6,3" Margin="0,0,2,0">
+                                    <StackPanel>
+                                        <TextBlock Text="空单" FontSize="9" Foreground="#FFAAAA"/>
+                                        <TextBlock Text="{Binding ShortPosition}" FontSize="13" Foreground="White" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Background="#001F3D" CornerRadius="3" Padding="6,3" Margin="2,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="多单" FontSize="9" Foreground="#AAA AFF"/>
+                                        <TextBlock Text="{Binding LongPosition}" FontSize="13" Foreground="White" FontWeight="Bold"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- 2. 挂单数量 -->
+                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                        <StackPanel>
+                            <TextBlock Text="挂单数量" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <Grid Margin="0,0,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="左键" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ui:NumberBox Grid.Column="1" Value="{Binding ValLeft, Mode=TwoWay}"
+                                              ClearButtonEnabled="False" FontSize="12" Minimum="0"/>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="右键" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <ui:NumberBox Grid.Column="1" Value="{Binding ValRight, Mode=TwoWay}"
+                                              ClearButtonEnabled="False" FontSize="12" Minimum="0"/>
+                            </Grid>
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- 3. 挂单模式 A/B -->
+                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                        <StackPanel>
+                            <TextBlock Text="挂单模式" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Content="ChgOrder(A)" IsChecked="{Binding IsChgOrderA, Mode=TwoWay}"
+                                             FontSize="11" Margin="0,0,8,0"/>
+                                <RadioButton Content="ChgOrder(B)" IsChecked="{Binding IsChgOrderA, Converter={StaticResource InverseBool}, Mode=OneWay}"
+                                             FontSize="11"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- 4. 下单限制 -->
+                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                        <StackPanel>
+                            <TextBlock Text="下单限制" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <CheckBox Content="Chg Nearby" IsChecked="{Binding CbNearby}" FontSize="11" Margin="0,2"/>
+                            <CheckBox Content="CntrbySprd" IsChecked="{Binding CbCntrbySprd}" FontSize="11" Margin="0,2"/>
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- 5. 价差锁定 -->
+                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                        <StackPanel>
+                            <TextBlock Text="价差锁定" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <Grid Margin="0,0,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <ui:TextBox Grid.Column="0" Text="{Binding CntrbySprdId, Mode=TwoWay}"
+                                            PlaceholderText="合约" FontSize="11" Margin="0,0,2,0"/>
+                                <ui:NumberBox Grid.Column="1" Value="{Binding CntrbySprdPt, Mode=TwoWay}"
+                                              ClearButtonEnabled="False" FontSize="11" Margin="2,0,2,0" Minimum="0"/>
+                                <ui:NumberBox Grid.Column="2" Value="{Binding CntrbySprdFctn, Mode=TwoWay}"
+                                              ClearButtonEnabled="False" FontSize="11" Margin="2,0,0,0" Minimum="1"/>
+                            </Grid>
+                            <TextBlock Text="合约码 / Pt / Fctr" FontSize="9" Foreground="#9E9E9E" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- 6. 开平仓 / M-OrderX -->
+                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                        <StackPanel>
+                            <TextBlock Text="交易模式" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <CheckBox Content="OnlyOpen（开仓）" IsChecked="{Binding CbOnlyOpen}" FontSize="11" Margin="0,2"/>
+                            <CheckBox Content="M-OrderX（禁用）" IsChecked="{Binding MOrderX}" FontSize="11" Margin="0,2"
+                                      Foreground="#FF6666"/>
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- 7. 其他开关 -->
+                    <ui:Card Margin="0,0,0,6" Padding="8,6">
+                        <StackPanel>
+                            <TextBlock Text="辅助开关" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                            <CheckBox Content="涨跌停锁" IsChecked="{Binding CbZdtLock}" FontSize="11" Margin="0,2"/>
+                            <CheckBox Content="白格单锁" IsChecked="{Binding CbBgds}" FontSize="11" Margin="0,2"/>
+                            <CheckBox Content="成交标识" IsChecked="{Binding ShowTradeMark}" FontSize="11" Margin="0,2"/>
+                        </StackPanel>
+                    </ui:Card>
+
+                    <!-- 8. 底部状态区 -->
+                    <ui:Card Margin="0,0,0,4" Padding="8,6" Background="#2D2D2D">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" FontSize="11" Foreground="#9E9E9E">
+                                    <Run Text="撤单 "/><Run Text="{Binding CancelCount}" TextDecorations="None"/><Run Text="K"/>
+                                </TextBlock>
+                                <TextBlock Grid.Column="1" FontSize="11" Foreground="#9E9E9E">
+                                    <Run Text="C:"/><Run Text="{Binding TradeOpenCount}"/>
+                                </TextBlock>
+                                <TextBlock Grid.Column="2" FontSize="11" Foreground="#9E9E9E">
+                                    <Run Text="T:"/><Run Text="{Binding TradeCloseCount}"/>
+                                </TextBlock>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="持仓 " FontSize="10" Foreground="#9E9E9E" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding TotalPosition}" FontSize="22" FontWeight="Bold" Foreground="White"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="{Binding OpenCloseMark}"
+                                           FontSize="28" FontWeight="Bold" Foreground="#CC3300"/>
+                            </Grid>
+                        </StackPanel>
+                    </ui:Card>
                 </StackPanel>
-                <StackPanel>
-                    <TextBlock Text="最高" FontSize="10" Foreground="#E53935" HorizontalAlignment="Center"/>
-                    <TextBlock Text="{Binding HighPrice, StringFormat={}{0:0.##}}" FontSize="11" Foreground="#E53935" HorizontalAlignment="Center"/>
-                </StackPanel>
-                <StackPanel>
-                    <TextBlock Text="最低" FontSize="10" Foreground="#43A047" HorizontalAlignment="Center"/>
-                    <TextBlock Text="{Binding LowPrice, StringFormat={}{0:0.##}}" FontSize="11" Foreground="#43A047" HorizontalAlignment="Center"/>
-                </StackPanel>
-                <StackPanel>
-                    <TextBlock Text="成交量" FontSize="10" Foreground="#9E9E9E" HorizontalAlignment="Center"/>
-                    <TextBlock Text="{Binding Volume}" FontSize="11" Foreground="White" HorizontalAlignment="Center"/>
-                </StackPanel>
-                <StackPanel>
-                    <TextBlock Text="持仓" FontSize="10" Foreground="#9E9E9E" HorizontalAlignment="Center"/>
-                    <TextBlock Text="{Binding OpenInterest}" FontSize="11" Foreground="White" HorizontalAlignment="Center"/>
-                </StackPanel>
-            </UniformGrid>
-        </Border>
+            </ScrollViewer>
 
-        <!-- 价差居中价格列表 -->
-        <controls:PriceListControl Grid.Row="1"
-                                   PriceLadder="{Binding PriceLadder}"
-                                   RowHeight="18"
-                                   MouseWheelSpeed="3"
-                                   PriceSelected="OnPriceSelected"/>
-
-        <!-- 底部下单区：买卖/开平/价格/数量/报单/撤单。DataContext 切到 Order VM。 -->
-        <Border Grid.Row="2" Background="#2D2D2D" Padding="10,8" DataContext="{Binding Order}">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-
-                <!-- 第 1 行：方向 + 开平 -->
-                <Grid Grid.Row="0" Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="方向" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <ComboBox Grid.Column="1"
-                              ItemsSource="{Binding Source={StaticResource DirectionValues}}"
-                              SelectedItem="{Binding Direction, Mode=TwoWay}"
-                              FontSize="12" Margin="0,0,8,0"/>
-                    <TextBlock Grid.Column="2" Text="开平" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <ComboBox Grid.Column="3"
-                              ItemsSource="{Binding Source={StaticResource OffsetFlagValues}}"
-                              SelectedItem="{Binding OffsetFlag, Mode=TwoWay}"
-                              FontSize="12"/>
-                </Grid>
-
-                <!-- 第 2 行：价格 + 数量 -->
-                <Grid Grid.Row="1" Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="价格" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <ui:NumberBox Grid.Column="1"
-                                  Value="{Binding Price, Mode=TwoWay}"
-                                  ClearButtonEnabled="False"
-                                  FontSize="13" Margin="0,0,8,0"/>
-                    <TextBlock Grid.Column="2" Text="数量" FontSize="11" Foreground="#9E9E9E" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <ui:NumberBox Grid.Column="3"
-                                  Value="{Binding Quantity, Mode=TwoWay}"
-                                  ClearButtonEnabled="False"
-                                  FontSize="13"/>
-                </Grid>
-
-                <!-- 第 3 行：报单 + 撤单按钮。报单按钮按方向变色（买绿/卖红） -->
-                <Grid Grid.Row="2" Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Grid.Column="0"
-                            Content="报单"
-                            Command="{Binding OrderCommand}"
-                            FontSize="14" FontWeight="Bold" Padding="0,8" Margin="0,0,6,0"
-                            Foreground="White">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="Background" Value="#666666"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Direction}" Value="{x:Static domain:Direction.Buy}">
-                                        <Setter Property="Background" Value="#43A047"/>
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding Direction}" Value="{x:Static domain:Direction.Sell}">
-                                        <Setter Property="Background" Value="#E53935"/>
-                                    </DataTrigger>
-                                    <Trigger Property="IsEnabled" Value="False">
-                                        <Setter Property="Background" Value="#3A3A3A"/>
-                                        <Setter Property="Foreground" Value="#757575"/>
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                    <Button Grid.Column="1"
-                            Content="撤单"
-                            Command="{Binding CancelCommand}"
-                            Width="80" FontSize="13" Padding="0,8"
-                            Background="#555555" Foreground="White"/>
-                </Grid>
-
-                <!-- 第 4 行：状态反馈 -->
-                <TextBlock Grid.Row="3"
-                           Text="{Binding StatusMessage}"
-                           FontSize="11" Foreground="#9E9E9E"
-                           TextTrimming="CharacterEllipsis"
-                           Margin="0,2,0,0"/>
-            </Grid>
-        </Border>
+            <!-- 右侧价格梯（红蓝区域） -->
+            <controls:PriceListControl Grid.Column="1"
+                                       PriceLadder="{Binding PriceLadder}"
+                                       RowHeight="{Binding RowHeight, Mode=OneWay}"
+                                       MouseWheelSpeed="3"
+                                       PriceSelected="OnPriceLeftClicked"
+                                       PriceRightClicked="OnPriceRightClicked"/>
+        </Grid>
     </Grid>
 </ui:FluentWindow>

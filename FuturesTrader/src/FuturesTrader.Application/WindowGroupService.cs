@@ -87,14 +87,13 @@ public sealed class WindowGroupService
         return layout.Windows.Where(w => w.GroupId == groupId).ToArray();
     }
 
-    /// <summary>打开指定分组的全部窗口（每窗调 IWindowHost.Open，已开则聚焦）。</summary>
+    /// <summary>打开指定分组的全部窗口（一次调用 IWindowHost.OpenGroup，水平紧密排列 + 成组同步）。</summary>
     public void OpenGroup(WindowLayout layout, int groupId)
     {
         ValidateGroupId(groupId);
-        foreach (var window in layout.Windows.Where(w => w.GroupId == groupId))
-            _host.Open(window);
-        _logger.LogInformation("已打开分组 {GroupId} 的 {Count} 个窗口", groupId,
-            layout.Windows.Count(w => w.GroupId == groupId));
+        var windows = layout.Windows.Where(w => w.GroupId == groupId).ToArray();
+        _host.OpenGroup(windows, groupId);
+        _logger.LogInformation("已打开分组 {GroupId} 的 {Count} 个窗口", groupId, windows.Length);
     }
 
     public bool IsWindowOpen(string instrumentCode)

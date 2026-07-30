@@ -52,7 +52,7 @@ public sealed partial class WindowGroupBarViewModel : ObservableObject
     [ObservableProperty]
     public partial DateTime? LastSavedAt { get; set; }
 
-    /// <summary>首次切换到本段时自动加载（由 MainViewModel 触发），已加载则跳过。</summary>
+    /// <summary>首次切换到本段时自动加载（由 SettingsViewModel 触发），已加载则跳过。</summary>
     public void EnsureLoaded()
     {
         if (_loaded is null && State is WindowGroupEditorState.Idle)

@@ -52,14 +52,25 @@ public sealed partial class TradingWindow : FluentWindow
     }
 
     /// <summary>
-    /// 价格梯行点击 → 设置下单 LimitPrice（对齐 0527.exe TPointWindow 点价设价交互）。
-    /// 点击上方卖盘行可快速挂卖单价，点击下方买盘行可快速挂买单价。
+    /// 价格梯左键点击 → 按 ValLeft 量挂单（红区挂空单 Sell，蓝区挂多单 Buy）。
+    /// 对齐 0527.exe TPointWindow 点价挂单交互。
     /// </summary>
-    private void OnPriceSelected(object sender, PriceSelectedEventArgs e)
+    private void OnPriceLeftClicked(object sender, PriceSelectedEventArgs e)
     {
         if (DataContext is TradingViewModel vm)
         {
-            vm.Order.Price = e.Price;
+            _ = vm.OnPriceLeftClickedAsync(e.Price, e.Zone);
+        }
+    }
+
+    /// <summary>
+    /// 价格梯右键点击 → 按 ValRight 量挂单（新手禁用）。
+    /// </summary>
+    private void OnPriceRightClicked(object sender, PriceSelectedEventArgs e)
+    {
+        if (DataContext is TradingViewModel vm)
+        {
+            _ = vm.OnPriceRightClickedAsync(e.Price, e.Zone);
         }
     }
 
