@@ -9,8 +9,8 @@ namespace FuturesTrader.Presentation.ViewModels;
 
 /// <summary>
 /// 窗口分组管理段的 ViewModel：编排 20 个分组按钮 + 当前组窗口列表 + 合约绑定输入。
-/// 持有内存中的 <see cref="WindowLayout"/>（_loaded），所有变更（绑定/解绑/重命名）先改 _loaded，
-/// 由用户点保存持久化（Load/Save 模式，与配置编辑器一致）。OpenGroup 用 _loaded 知道组内窗口。
+/// 启动时自动从 Users.xml + window-groups.json 加载（无需用户点加载按钮）；
+/// 所有变更（绑定/解绑/重命名）改 _loaded 后由用户点保存持久化。
 /// 状态机 <see cref="WindowGroupEditorState"/> 驱动 UI 反馈。
 /// </summary>
 public sealed partial class WindowGroupBarViewModel : ObservableObject
@@ -31,6 +31,8 @@ public sealed partial class WindowGroupBarViewModel : ObservableObject
                 Parent = this
             }));
         SelectedGroup = Groups[0];
+        // 启动即自动加载最新窗口布局
+        _ = LoadAsync();
     }
 
     /// <summary>20 个分组按钮 VM（1-20 号）。</summary>
@@ -41,9 +43,8 @@ public sealed partial class WindowGroupBarViewModel : ObservableObject
     public partial WindowGroupViewModel? SelectedGroup { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(LoadCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
-    public partial WindowGroupEditorState State { get; private set; } = new WindowGroupEditorState.Idle();
+    public partial WindowGroupEditorState State { get; private set; } = new WindowGroupEditorState.Loading();
 
     /// <summary>绑定输入框：新合约码。</summary>
     [ObservableProperty]
@@ -52,14 +53,6 @@ public sealed partial class WindowGroupBarViewModel : ObservableObject
     [ObservableProperty]
     public partial DateTime? LastSavedAt { get; set; }
 
-    /// <summary>首次切换到本段时自动加载（由 SettingsViewModel 触发），已加载则跳过。</summary>
-    public void EnsureLoaded()
-    {
-        if (_loaded is null && State is WindowGroupEditorState.Idle)
-            _ = LoadAsync();
-    }
-
-    [RelayCommand(CanExecute = nameof(CanLoadOrSave))]
     private async Task LoadAsync()
     {
         State = new WindowGroupEditorState.Loading();
@@ -68,7 +61,7 @@ public sealed partial class WindowGroupBarViewModel : ObservableObject
             _loaded = await Task.Run(() => _service.Load());
             HydrateGroups(_loaded);
             State = new WindowGroupEditorState.Loaded();
-            _logger.LogInformation("窗口分组已加载: {Count} 个窗口", _loaded.Windows.Count);
+            _logger.LogInformation("窗口分组已自动加载: {Count} 个窗口", _loaded.Windows.Count);
         }
         catch (Exception ex)
         {
@@ -174,6 +167,30 @@ public sealed partial class WindowGroupBarViewModel : ObservableObject
         }
     }
 
+    /// <summary>在组内上下移动窗口（改 _loaded.Windows 顺序，需保存持久化）。
+    /// 已在首/尾时为 no-op（对应按钮被禁用）。</summary>
+    public void MoveWindow(string instrumentCode, int delta)
+    {
+        if (_loaded is null) return;
+        try
+        {
+            _loaded = _service.ReorderWindowInGroup(_loaded, instrumentCode, delta);
+            HydrateGroups(_loaded);
+        }
+        catch (Exception ex)
+        {
+            State = new WindowGroupEditorState.Error(ex.Message);
+        }
+    }
+
+    /// <summary>判断该窗口当前是否可在组内上移（用于按钮 IsEnabled 绑定）。</summary>
+    public bool CanMoveWindowUp(string instrumentCode) =>
+        _loaded is not null && _service.CanMoveUp(_loaded, instrumentCode);
+
+    /// <summary>判断该窗口当前是否可在组内下移（用于按钮 IsEnabled 绑定）。</summary>
+    public bool CanMoveWindowDown(string instrumentCode) =>
+        _loaded is not null && _service.CanMoveDown(_loaded, instrumentCode);
+
     public void FocusWindow(string instrumentCode)
     {
         try { _service.FocusWindow(instrumentCode); }
@@ -200,19 +217,17 @@ public sealed partial class WindowGroupBarViewModel : ObservableObject
             vm.Windows.Clear();
             foreach (var w in layout.Windows.Where(w => w.GroupId == vm.Id))
             {
-                vm.Windows.Add(new InstrumentWindowViewModel
+                var wvm = new InstrumentWindowViewModel
                 {
                     InstrumentCode = w.InstrumentCode,
                     GroupId = w.GroupId,
                     IsOpen = _service.IsWindowOpen(w.InstrumentCode),
                     Parent = this
-                });
+                };
+                vm.Windows.Add(wvm);
             }
         }
     }
-
-    private bool CanLoadOrSave() =>
-        State is WindowGroupEditorState.Idle or WindowGroupEditorState.Loaded or WindowGroupEditorState.Error;
 
     private bool CanSave() => State is WindowGroupEditorState.Loaded;
 }

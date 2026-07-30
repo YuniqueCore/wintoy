@@ -8,13 +8,58 @@
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:SettingsViewModel}"
         Title="FuturesTrader 设置"
-        Width="960" Height="660"
-        MinWidth="760" MinHeight="540"
+        Width="960" Height="720"
+        MinWidth="760" MinHeight="600"
         WindowStartupLocation="CenterOwner"
         ExtendsContentIntoTitleBar="True"
         WindowBackdropType="Mica"
         WindowCornerPreference="Round"
-        AutomationProperties.AutomationId="SettingsWindow">
+        AutomationProperties.AutomationId="SettingsWindow"
+        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+        Background="{DynamicResource ApplicationBackgroundBrush}">
+    <ui:FluentWindow.Resources>
+        <!-- 标签：保证前景色高对比，避免深色主题看不清 -->
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,4"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        <!-- 标题：组卡片 / 段标题 -->
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
+        <!-- 提示文字 -->
+        <Style x:Key="HintStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <!-- 输入框：显式前景 + 背景，保证在 dark/light 都可读 -->
+        <Style x:Key="InputTextBoxStyle" TargetType="ui:TextBox" BasedOn="{StaticResource {x:Type ui:TextBox}}">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorInputActiveBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlElevationBorderBrush}"/>
+            <Setter Property="Margin" Value="0,4"/>
+        </Style>
+        <!-- 数字框 -->
+        <Style x:Key="InputNumberBoxStyle" TargetType="ui:NumberBox" BasedOn="{StaticResource {x:Type ui:NumberBox}}">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorInputActiveBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlElevationBorderBrush}"/>
+            <Setter Property="Margin" Value="0,4"/>
+        </Style>
+        <!-- 卡片：显式背景，避免 Mica 透传时前景看不清 -->
+        <Style x:Key="SectionCardStyle" TargetType="ui:Card">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlElevationBorderBrush}"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+    </ui:FluentWindow.Resources>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -36,44 +81,50 @@
             </Grid.ColumnDefinitions>
 
             <!-- 左栏：段落导航 ListBox -->
-            <ui:Card Grid.Column="0" Padding="0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch">
-                <ui:Card.Content>
-                    <ListBox Background="Transparent"
-                             BorderThickness="0"
-                             SelectedIndex="{Binding CurrentSectionIndex, Mode=TwoWay}"
-                             Padding="4">
-                        <ListBoxItem Padding="12,10">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="WindowDevTools24" FontSize="18" Margin="0,0,12,0"/>
-                                <TextBlock Text="Window 段" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </ListBoxItem>
-                        <ListBoxItem Padding="12,10">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="ShieldTask24" FontSize="18" Margin="0,0,12,0"/>
-                                <TextBlock Text="Order 段" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </ListBoxItem>
-                        <ListBoxItem Padding="12,10">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="PlugConnected24" FontSize="18" Margin="0,0,12,0"/>
-                                <TextBlock Text="User 段" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </ListBoxItem>
-                        <ListBoxItem Padding="12,10">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="TabDesktopMultiple24" FontSize="18" Margin="0,0,12,0"/>
-                                <TextBlock Text="窗口分组" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </ListBoxItem>
-                        <ListBoxItem Padding="12,10">
-                            <StackPanel Orientation="Horizontal">
-                                <ui:SymbolIcon Symbol="ColorBackground24" FontSize="18" Margin="0,0,12,0"/>
-                                <TextBlock Text="外观" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </ListBoxItem>
-                    </ListBox>
-                </ui:Card.Content>
+            <ui:Card Grid.Column="0" Padding="0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+                     Background="{DynamicResource CardBackgroundBrush}">
+                <ListBox Background="Transparent"
+                         BorderThickness="0"
+                         Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                         SelectedIndex="{Binding CurrentSectionIndex, Mode=TwoWay}"
+                         Padding="4">
+                    <ListBoxItem Padding="12,10">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="WindowDevTools24" FontSize="18" Margin="0,0,12,0"/>
+                            <TextBlock Text="Window 段" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="12,10">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="ShieldTask24" FontSize="18" Margin="0,0,12,0"/>
+                            <TextBlock Text="Order 段" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="12,10">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="PlugConnected24" FontSize="18" Margin="0,0,12,0"/>
+                            <TextBlock Text="User 段" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="12,10">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="TabDesktopMultiple24" FontSize="18" Margin="0,0,12,0"/>
+                            <TextBlock Text="窗口分组" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="12,10">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="Person24" FontSize="18" Margin="0,0,12,0"/>
+                            <TextBlock Text="交易账号" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="12,10">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="ColorBackground24" FontSize="18" Margin="0,0,12,0"/>
+                            <TextBlock Text="外观" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                </ListBox>
             </ui:Card>
 
             <!-- 右栏：操作栏 + 段落表单 + 状态栏 -->
@@ -84,7 +135,8 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- 操作栏：加载/保存 + 保存反馈（窗口分组段和外观段隐藏） -->
+                <!-- 操作栏：仅"保存配置"按钮（启动即自动读取最新配置，保存才落盘）。
+                     窗口分组段/交易账号段/外观段隐藏，账号段在表单内自带按钮。 -->
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
                     <StackPanel.Style>
                         <Style TargetType="StackPanel">
@@ -95,18 +147,19 @@
                                 <DataTrigger Binding="{Binding CurrentSectionIndex}" Value="4">
                                     <Setter Property="Visibility" Value="Collapsed"/>
                                 </DataTrigger>
+                                <DataTrigger Binding="{Binding CurrentSectionIndex}" Value="5">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
                             </Style.Triggers>
                         </Style>
                     </StackPanel.Style>
-                    <ui:Button Content="加载配置" Appearance="Primary"
-                               Icon="{ui:SymbolIcon ArrowDownload24}"
-                               Command="{Binding LoadCommand}" Margin="0,0,8,0" Padding="16,8"/>
-                    <ui:Button Content="保存配置"
-                               Icon="{ui:SymbolIcon ArrowUpload24}"
-                               Command="{Binding SaveCommand}" Margin="0,0,16,0" Padding="16,8"/>
+                    <ui:Button Content="保存配置" Appearance="Primary"
+                               Icon="{ui:SymbolIcon Save24}"
+                               Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                               Command="{Binding SaveCommand}" Margin="0,0,16,0" Padding="18,8"/>
                     <TextBlock Text="{Binding LastSavedAt, StringFormat='已保存 {0:HH:mm:ss}', TargetNullValue='尚未保存'}"
                                VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                 </StackPanel>
 
                 <!-- 段落表单：按 CurrentSegment 运行时类型选 DataTemplate -->
@@ -118,10 +171,10 @@
                                 <StackPanel>
                                     <ui:CardControl Margin="0,0,0,8">
                                         <ui:CardControl.Header>
-                                            <TextBlock Text="Window 段 · 窗口外观与交互参数" FontWeight="SemiBold"/>
+                                            <TextBlock Text="Window 段 · 窗口外观与交互参数" Style="{StaticResource SectionTitleStyle}"/>
                                         </ui:CardControl.Header>
                                     </ui:CardControl>
-                                    <ui:Card Padding="16" Margin="0,0,0,8">
+                                    <ui:Card Style="{StaticResource SectionCardStyle}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="220"/>
@@ -140,27 +193,27 @@
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
-                                            <TextBlock Grid.Row="0" Text="主字体 MainFont" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:TextBox Grid.Row="0" Grid.Column="1" Text="{Binding MainFont, UpdateSourceTrigger=PropertyChanged}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="1" Text="紧凑度 CompactSpacing" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="1" Grid.Column="1" Value="{Binding CompactSpacing, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="2" Text="字号偏移 FontSizeOffset" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="2" Grid.Column="1" Value="{Binding FontSizeOffset, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="3" Text="价格边距 PriceListMargin" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="3" Grid.Column="1" Value="{Binding PriceListMargin, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="4" Text="标题栏减高 DecTitle" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="4" Grid.Column="1" Value="{Binding DecTitle, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="5" Text="对齐 Align" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="5" Grid.Column="1" Value="{Binding Align, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="6" Text="窄模式减宽 NarrowReduceLength" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="6" Grid.Column="1" Value="{Binding NarrowReduceLength, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="7" Text="滚轮加速 MouseWheelSpeed" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="7" Grid.Column="1" Value="{Binding MouseWheelSpeed, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="8" Text="Tick 行高 TickRowHeights" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="8" Grid.Column="1" Value="{Binding TickRowHeights, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="9" Text="合约窗口高度 InstrumentWindowHeights" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="9" Grid.Column="1" Value="{Binding InstrumentWindowHeights, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="10" Text="自动大小 AutoSize" VerticalAlignment="Center" Margin="0,4"/>
+                                            <TextBlock Grid.Row="0" Text="主字体 MainFont" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:TextBox Grid.Row="0" Grid.Column="1" Text="{Binding MainFont, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}"/>
+                                            <TextBlock Grid.Row="1" Text="紧凑度 CompactSpacing" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="1" Grid.Column="1" Value="{Binding CompactSpacing, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="2" Text="字号偏移 FontSizeOffset" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="2" Grid.Column="1" Value="{Binding FontSizeOffset, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="3" Text="价格边距 PriceListMargin" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="3" Grid.Column="1" Value="{Binding PriceListMargin, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="4" Text="标题栏减高 DecTitle" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="4" Grid.Column="1" Value="{Binding DecTitle, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="5" Text="对齐 Align" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="5" Grid.Column="1" Value="{Binding Align, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="6" Text="窄模式减宽 NarrowReduceLength" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="6" Grid.Column="1" Value="{Binding NarrowReduceLength, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="7" Text="滚轮加速 MouseWheelSpeed" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="7" Grid.Column="1" Value="{Binding MouseWheelSpeed, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="8" Text="Tick 行高 TickRowHeights" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="8" Grid.Column="1" Value="{Binding TickRowHeights, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="9" Text="合约窗口高度 InstrumentWindowHeights" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="9" Grid.Column="1" Value="{Binding InstrumentWindowHeights, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="10" Text="自动大小 AutoSize" Style="{StaticResource FieldLabelStyle}"/>
                                             <ui:ToggleSwitch Grid.Row="10" Grid.Column="1" IsChecked="{Binding AutoSize}" Margin="0,4"/>
                                         </Grid>
                                     </ui:Card>
@@ -172,10 +225,10 @@
                                 <StackPanel>
                                     <ui:CardControl Margin="0,0,0,8">
                                         <ui:CardControl.Header>
-                                            <TextBlock Text="Order 段 · 交易风控参数" FontWeight="SemiBold"/>
+                                            <TextBlock Text="Order 段 · 交易风控参数" Style="{StaticResource SectionTitleStyle}"/>
                                         </ui:CardControl.Header>
                                     </ui:CardControl>
-                                    <ui:Card Padding="16" Margin="0,0,0,8">
+                                    <ui:Card Style="{StaticResource SectionCardStyle}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="220"/>
@@ -191,22 +244,22 @@
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
-                                            <TextBlock Grid.Row="0" Text="商品撤单 Spck (SP)" VerticalAlignment="Center" Margin="0,4"/>
+                                            <TextBlock Grid.Row="0" Text="商品撤单 Spck (SP)" Style="{StaticResource FieldLabelStyle}"/>
                                             <ui:ToggleSwitch Grid.Row="0" Grid.Column="1" IsChecked="{Binding Spck}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="1" Text="股指撤单 Gzck (GZ)" VerticalAlignment="Center" Margin="0,4"/>
+                                            <TextBlock Grid.Row="1" Text="股指撤单 Gzck (GZ)" Style="{StaticResource FieldLabelStyle}"/>
                                             <ui:ToggleSwitch Grid.Row="1" Grid.Column="1" IsChecked="{Binding Gzck}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="2" Text="本地风控 RiskOpen" VerticalAlignment="Center" Margin="0,4"/>
+                                            <TextBlock Grid.Row="2" Text="本地风控 RiskOpen" Style="{StaticResource FieldLabelStyle}"/>
                                             <ui:ToggleSwitch Grid.Row="2" Grid.Column="1" IsChecked="{Binding RiskOpen}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="3" Text="股指最大撤单 MaxCancelGZ" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="3" Grid.Column="1" Value="{Binding MaxCancelGz, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="4" Text="商品最大撤单 MaxCancelSP" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="4" Grid.Column="1" Value="{Binding MaxCancelSp, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="5" Text="期权最大撤单 MaxCancelQQ" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="5" Grid.Column="1" Value="{Binding MaxCancelQq, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="6" Text="最大报单数 MaxInputCount (0=不限)" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="6" Grid.Column="1" Value="{Binding MaxInputCount, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="7" Text="最大持仓数 MaxPositionCount (0=不限)" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="7" Grid.Column="1" Value="{Binding MaxPositionCount, Mode=TwoWay}" Margin="0,4"/>
+                                            <TextBlock Grid.Row="3" Text="股指最大撤单 MaxCancelGZ" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="3" Grid.Column="1" Value="{Binding MaxCancelGz, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="4" Text="商品最大撤单 MaxCancelSP" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="4" Grid.Column="1" Value="{Binding MaxCancelSp, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="5" Text="期权最大撤单 MaxCancelQQ" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="5" Grid.Column="1" Value="{Binding MaxCancelQq, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="6" Text="最大报单数 MaxInputCount (0=不限)" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="6" Grid.Column="1" Value="{Binding MaxInputCount, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="7" Text="最大持仓数 MaxPositionCount (0=不限)" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="7" Grid.Column="1" Value="{Binding MaxPositionCount, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
                                         </Grid>
                                     </ui:Card>
                                 </StackPanel>
@@ -217,10 +270,10 @@
                                 <StackPanel>
                                     <ui:CardControl Margin="0,0,0,8">
                                         <ui:CardControl.Header>
-                                            <TextBlock Text="User 段 · 行情/交易连接与开盘抢单" FontWeight="SemiBold"/>
+                                            <TextBlock Text="User 段 · 行情/交易连接与开盘抢单" Style="{StaticResource SectionTitleStyle}"/>
                                         </ui:CardControl.Header>
                                     </ui:CardControl>
-                                    <ui:Card Padding="16" Margin="0,0,0,8">
+                                    <ui:Card Style="{StaticResource SectionCardStyle}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="220"/>
@@ -238,44 +291,105 @@
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
-                                            <TextBlock Grid.Row="0" Text="行情服务器 HqAddress" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:TextBox Grid.Row="0" Grid.Column="1" Text="{Binding HqAddress, UpdateSourceTrigger=PropertyChanged}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="1" Text="QDP 标记" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="1" Grid.Column="1" Value="{Binding Qdp, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="2" Text="运行模式 RunMode (0=正常)" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="2" Grid.Column="1" Value="{Binding RunMode, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="3" Text="云风控 CloudRiskOn" VerticalAlignment="Center" Margin="0,4"/>
+                                            <TextBlock Grid.Row="0" Text="行情服务器 HqAddress" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:TextBox Grid.Row="0" Grid.Column="1" Text="{Binding HqAddress, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}"/>
+                                            <TextBlock Grid.Row="1" Text="QDP 标记" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="1" Grid.Column="1" Value="{Binding Qdp, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="2" Text="运行模式 RunMode (0=正常)" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="2" Grid.Column="1" Value="{Binding RunMode, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="3" Text="云风控 CloudRiskOn" Style="{StaticResource FieldLabelStyle}"/>
                                             <ui:ToggleSwitch Grid.Row="3" Grid.Column="1" IsChecked="{Binding CloudRiskOn}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="4" Text="行情转发 HqffOn" VerticalAlignment="Center" Margin="0,4"/>
+                                            <TextBlock Grid.Row="4" Text="行情转发 HqffOn" Style="{StaticResource FieldLabelStyle}"/>
                                             <ui:ToggleSwitch Grid.Row="4" Grid.Column="1" IsChecked="{Binding HqffOn}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="5" Text="转发目标 IP HqffIp" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:TextBox Grid.Row="5" Grid.Column="1" Text="{Binding HqffIp, UpdateSourceTrigger=PropertyChanged}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="6" Text="转发目标端口 HqffPort" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="6" Grid.Column="1" Value="{Binding HqffPort, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="7" Text="抢单频率 MOrderXSpeed (ms)" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="7" Grid.Column="1" Value="{Binding MOrderXSpeed, Mode=TwoWay}" Margin="0,4"/>
-                                            <TextBlock Grid.Row="8" Text="抢单持续 MOrderXStop (ms)" VerticalAlignment="Center" Margin="0,4"/>
-                                            <ui:NumberBox Grid.Row="8" Grid.Column="1" Value="{Binding MOrderXStop, Mode=TwoWay}" Margin="0,4"/>
+                                            <TextBlock Grid.Row="5" Text="转发目标 IP HqffIp" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:TextBox Grid.Row="5" Grid.Column="1" Text="{Binding HqffIp, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}"/>
+                                            <TextBlock Grid.Row="6" Text="转发目标端口 HqffPort" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="6" Grid.Column="1" Value="{Binding HqffPort, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="7" Text="抢单频率 MOrderXSpeed (ms)" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="7" Grid.Column="1" Value="{Binding MOrderXSpeed, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
+                                            <TextBlock Grid.Row="8" Text="抢单持续 MOrderXStop (ms)" Style="{StaticResource FieldLabelStyle}"/>
+                                            <ui:NumberBox Grid.Row="8" Grid.Column="1" Value="{Binding MOrderXStop, Mode=TwoWay}" Style="{StaticResource InputNumberBoxStyle}"/>
                                         </Grid>
                                     </ui:Card>
-                                    <ui:Card Padding="16" Margin="0,0,0,8">
+                                    <!-- 开盘抢单时间点：CRUD（新增 / 删除） -->
+                                    <ui:Card Style="{StaticResource SectionCardStyle}">
                                         <StackPanel>
-                                            <TextBlock Text="开盘抢单触发时间点 MOrderTimes（只读，9 个）" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                                            <ItemsControl ItemsSource="{Binding MOrderTimes}">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <WrapPanel/>
-                                                    </ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
-                                                                CornerRadius="6" Padding="10,4" Margin="0,0,8,8">
-                                                            <TextBlock Text="{Binding StringFormat='#{0}'}" FontFamily="Consolas"/>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
+                                            <DockPanel LastChildFill="True" Margin="0,0,0,8">
+                                                <TextBlock DockPanel.Dock="Left" Text="开盘抢单触发时间点 MOrderTimes" Style="{StaticResource SectionTitleStyle}"/>
+                                                <TextBlock DockPanel.Dock="Right"
+                                                           VerticalAlignment="Center"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                                                    <Run Text="{Binding MOrderTimes.Count, Mode=OneWay}"/>
+                                                    <Run Text=" / "/>
+                                                    <Run Text="9"/>
+                                                </TextBlock>
+                                            </DockPanel>
+                                            <!-- 新增：输入框 + 添加按钮 + 错误提示 -->
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="160"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ui:TextBox Grid.Column="0"
+                                                            Text="{Binding NewMOrderTime, UpdateSourceTrigger=PropertyChanged}"
+                                                            PlaceholderText="HH:mm:ss，如 09:29:58"
+                                                            Style="{StaticResource InputTextBoxStyle}">
+                                                    <ui:TextBox.InputBindings>
+                                                        <KeyBinding Key="Enter" Command="{Binding AddMOrderTimeCommand}"/>
+                                                    </ui:TextBox.InputBindings>
+                                                </ui:TextBox>
+                                                <ui:Button Grid.Column="1" Content="添加"
+                                                           Appearance="Primary"
+                                                           Icon="{ui:SymbolIcon Add24}"
+                                                           Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                                           Command="{Binding AddMOrderTimeCommand}"
+                                                           Margin="8,4,8,4" Padding="14,6"/>
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding MOrderTimeError}"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                                           FontSize="12"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                            </Grid>
+                                            <!-- 已配置列表：每条带"删除"按钮 -->
+                                            <Border BorderBrush="{DynamicResource ControlElevationBorderBrush}"
+                                                    BorderThickness="1" CornerRadius="6"
+                                                    Background="{DynamicResource ControlFillColorTransparentBrush}"
+                                                    MinHeight="48">
+                                                <ItemsControl ItemsSource="{Binding MOrderTimes}" Padding="8">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel/>
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                                                    BorderBrush="{DynamicResource ControlElevationBorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="6" Padding="4,2" Margin="0,0,6,6">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <TextBlock Text="{Binding}"
+                                                                               FontFamily="Consolas" FontSize="13"
+                                                                               VerticalAlignment="Center" Margin="8,0,4,0"
+                                                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                                                    <ui:Button Icon="{ui:SymbolIcon Dismiss16}"
+                                                                               ToolTip="删除该时间点"
+                                                                               Background="Transparent"
+                                                                               Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                                                               Command="{Binding DataContext.RemoveMOrderTimeCommand, RelativeSource={RelativeSource AncestorType=ContentControl}}"
+                                                                               CommandParameter="{Binding}"
+                                                                               Padding="4,2" Margin="0"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </Border>
+                                            <TextBlock Style="{StaticResource HintStyle}" Margin="0,8,0,0"
+                                                       Text="提示：覆盖各交易所开盘时段；上限 9 个，格式必须为 HH:mm:ss；点 × 删除单条；保存配置后生效。"/>
                                         </StackPanel>
                                     </ui:Card>
                                 </StackPanel>
@@ -293,21 +407,20 @@
                                     </Grid.RowDefinitions>
                                     <ui:CardControl Grid.Row="0" Margin="0,0,0,8">
                                         <ui:CardControl.Header>
-                                            <TextBlock Text="窗口分组 · 20 组合约窗口的绑定/重命名/一键开组" FontWeight="SemiBold"/>
+                                            <TextBlock Text="窗口分组 · 20 组合约窗口的绑定/重命名/一键开组" Style="{StaticResource SectionTitleStyle}"/>
                                         </ui:CardControl.Header>
                                     </ui:CardControl>
                                     <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
-                                        <ui:Button Content="加载分组" Appearance="Primary"
-                                                   Icon="{ui:SymbolIcon ArrowDownload24}"
-                                                   Command="{Binding LoadCommand}" Margin="0,0,8,0" Padding="16,8"/>
-                                        <ui:Button Content="保存分组"
-                                                   Icon="{ui:SymbolIcon ArrowUpload24}"
+                                        <ui:Button Content="保存分组" Appearance="Primary"
+                                                   Icon="{ui:SymbolIcon Save24}"
+                                                   Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
                                                    Command="{Binding SaveCommand}" Margin="0,0,16,0" Padding="16,8"/>
                                         <TextBlock Text="{Binding LastSavedAt, StringFormat='已保存 {0:HH:mm:ss}', TargetNullValue='尚未保存'}"
                                                    VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                     </StackPanel>
-                                    <ui:Card Grid.Row="2" Padding="12" Margin="0,0,0,8">
+                                    <ui:Card Grid.Row="2" Padding="12" Margin="0,0,0,8"
+                                             Background="{DynamicResource CardBackgroundBrush}">
                                         <ItemsControl ItemsSource="{Binding Groups}">
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate>
@@ -318,6 +431,7 @@
                                                 <DataTemplate DataType="{x:Type vm:WindowGroupViewModel}">
                                                     <Border BorderBrush="{DynamicResource ControlElevationBorderBrush}"
                                                             BorderThickness="1" CornerRadius="6" Margin="0,0,6,6"
+                                                            Background="{DynamicResource ControlFillColorDefaultBrush}"
                                                             MinWidth="120">
                                                         <Border.ContextMenu>
                                                             <ContextMenu>
@@ -329,6 +443,7 @@
                                                         <Grid Margin="10,6">
                                                             <ui:Button Command="{Binding OpenGroupCommand}"
                                                                        Background="Transparent" BorderThickness="0"
+                                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                                        HorizontalAlignment="Stretch"
                                                                        HorizontalContentAlignment="Left" Padding="0">
                                                                 <ui:Button.Style>
@@ -341,10 +456,11 @@
                                                                     </Style>
                                                                 </ui:Button.Style>
                                                                 <StackPanel>
-                                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                                                     <TextBlock Text="{Binding Windows.Count, StringFormat='{}{0} 个窗口'}"
                                                                                FontSize="11"
-                                                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                                                 </StackPanel>
                                                             </ui:Button>
                                                             <StackPanel Orientation="Horizontal">
@@ -359,7 +475,8 @@
                                                                     </Style>
                                                                 </StackPanel.Style>
                                                                 <ui:TextBox Text="{Binding RenameText, UpdateSourceTrigger=PropertyChanged}"
-                                                                            MinWidth="90" Margin="0,0,4,0">
+                                                                            MinWidth="90" Margin="0,0,4,0"
+                                                                            Style="{StaticResource InputTextBoxStyle}">
                                                                     <ui:TextBox.InputBindings>
                                                                         <KeyBinding Key="Enter" Command="{Binding CommitRenameCommand}"/>
                                                                         <KeyBinding Key="Escape" Command="{Binding CancelRenameCommand}"/>
@@ -378,34 +495,50 @@
                                     </ui:Card>
                                     <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,12">
                                         <ui:TextBox Text="{Binding NewInstrumentCode, UpdateSourceTrigger=PropertyChanged}"
-                                                    Width="220" Margin="0,0,8,0" PlaceholderText="输入合约码，如 ag2608"/>
+                                                    Width="220" Margin="0,0,8,0" PlaceholderText="输入合约码，如 ag2608"
+                                                    Style="{StaticResource InputTextBoxStyle}"/>
                                         <ui:Button Content="绑定到当前组" Command="{Binding AssignWindowCommand}"
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                    Padding="14,8" Margin="0,0,12,0"/>
                                         <TextBlock VerticalAlignment="Center"
                                                    Text="{Binding SelectedGroup.Name, StringFormat='→ {0}'}"
-                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                                     </StackPanel>
-                                    <ui:Card Grid.Row="4" Padding="12">
+                                    <ui:Card Grid.Row="4" Padding="12"
+                                             Background="{DynamicResource CardBackgroundBrush}">
                                         <DockPanel>
                                             <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8" FontWeight="SemiBold"
-                                                       Text="{Binding SelectedGroup.Name, StringFormat='当前组：{0} 的窗口'}"/>
+                                                       Text="{Binding SelectedGroup.Name, StringFormat='当前组：{0} 的窗口'}"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                                             <ListView ItemsSource="{Binding SelectedGroup.Windows}"
-                                                      Background="Transparent" BorderThickness="0">
+                                                      Background="Transparent" BorderThickness="0"
+                                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}">
                                                 <ListView.View>
                                                     <GridView>
-                                                        <GridViewColumn Header="合约码" Width="180"
+                                                        <GridViewColumn Header="合约码" Width="160"
                                                                         DisplayMemberBinding="{Binding InstrumentCode}"/>
-                                                        <GridViewColumn Header="已开" Width="60"
+                                                        <GridViewColumn Header="已开" Width="50"
                                                                         DisplayMemberBinding="{Binding IsOpen}"/>
-                                                        <GridViewColumn Header="操作" Width="260">
+                                                        <GridViewColumn Header="操作" Width="380">
                                                             <GridViewColumn.CellTemplate>
                                                                 <DataTemplate>
                                                                     <StackPanel Orientation="Horizontal">
+                                                                        <ui:Button Icon="{ui:SymbolIcon ArrowUp16}"
+                                                                                   Command="{Binding MoveUpCommand}"
+                                                                                   ToolTip="组内上移（不跨组）"
+                                                                                   Margin="0,0,4,0" Padding="6,4"/>
+                                                                        <ui:Button Icon="{ui:SymbolIcon ArrowDown16}"
+                                                                                   Command="{Binding MoveDownCommand}"
+                                                                                   ToolTip="组内下移（不跨组）"
+                                                                                   Margin="0,0,4,0" Padding="6,4"/>
                                                                         <ui:Button Content="聚焦" Command="{Binding FocusCommand}"
+                                                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                                                    Margin="0,0,4,0" Padding="10,4"/>
                                                                         <ui:Button Content="关闭" Command="{Binding CloseCommand}"
+                                                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                                                    Margin="0,0,4,0" Padding="10,4"/>
                                                                         <ui:Button Content="解绑" Command="{Binding UnassignCommand}"
+                                                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                                                    Padding="10,4"/>
                                                                     </StackPanel>
                                                                 </DataTemplate>
@@ -419,28 +552,173 @@
                                 </Grid>
                             </DataTemplate>
 
+                            <!-- 交易账号段：CRUD + 列表编辑 + 内联编辑表单 -->
+                            <DataTemplate DataType="{x:Type vm:UserAccountEditorViewModel}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <ui:CardControl Grid.Row="0" Margin="0,0,0,8">
+                                        <ui:CardControl.Header>
+                                            <TextBlock Text="交易账号 · Users.xml 的账号 CRUD" Style="{StaticResource SectionTitleStyle}"/>
+                                        </ui:CardControl.Header>
+                                    </ui:CardControl>
+                                    <ui:Card Grid.Row="1" Padding="12" Margin="0,0,0,8"
+                                             Background="{DynamicResource CardBackgroundBrush}">
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Top" Margin="0,0,0,8" FontWeight="SemiBold"
+                                                       Text="{Binding Accounts.Count, StringFormat='已加载账号 ({0})'}"
+                                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                            <ListView ItemsSource="{Binding Accounts}"
+                                                      SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
+                                                      Background="Transparent" BorderThickness="0"
+                                                      Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                                                <ListView.View>
+                                                    <GridView>
+                                                        <GridViewColumn Header="UserId" Width="120"
+                                                                        DisplayMemberBinding="{Binding UserId}"/>
+                                                        <GridViewColumn Header="Title" Width="100"
+                                                                        DisplayMemberBinding="{Binding Title}"/>
+                                                        <GridViewColumn Header="BrokerId" Width="80"
+                                                                        DisplayMemberBinding="{Binding BrokerId}"/>
+                                                        <GridViewColumn Header="Address" Width="220"
+                                                                        DisplayMemberBinding="{Binding TradingAddress}"/>
+                                                        <GridViewColumn Header="AppId" Width="140"
+                                                                        DisplayMemberBinding="{Binding AppId}"/>
+                                                    </GridView>
+                                                </ListView.View>
+                                            </ListView>
+                                        </DockPanel>
+                                    </ui:Card>
+                                    <Grid Grid.Row="2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <!-- 左：选中账号的编辑表单 -->
+                                        <ui:Card Grid.Column="0" Padding="12" Background="{DynamicResource CardBackgroundBrush}">
+                                            <StackPanel>
+                                                <TextBlock Text="编辑选中账号" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8"/>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="100"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                    </Grid.RowDefinitions>
+                                                    <TextBlock Grid.Row="0" Text="UserId" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedAccount.UserId, FallbackValue='（未选中）'}"
+                                                               VerticalAlignment="Center" Margin="0,4" FontFamily="Consolas"
+                                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                                                    <TextBlock Grid.Row="1" Text="Title" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="1" Grid.Column="1"
+                                                                Text="{Binding SelectedAccount.Title, UpdateSourceTrigger=PropertyChanged, FallbackValue=''}"
+                                                                Style="{StaticResource InputTextBoxStyle}"/>
+                                                    <TextBlock Grid.Row="2" Text="BrokerId" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="2" Grid.Column="1"
+                                                                Text="{Binding SelectedAccount.BrokerId, UpdateSourceTrigger=PropertyChanged, FallbackValue=''}"
+                                                                Style="{StaticResource InputTextBoxStyle}"/>
+                                                    <TextBlock Grid.Row="3" Text="Address" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="3" Grid.Column="1"
+                                                                Text="{Binding SelectedAccount.TradingAddress, UpdateSourceTrigger=PropertyChanged, FallbackValue=''}"
+                                                                Style="{StaticResource InputTextBoxStyle}"/>
+                                                    <TextBlock Grid.Row="4" Text="AppId" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="4" Grid.Column="1"
+                                                                Text="{Binding SelectedAccount.AppId, UpdateSourceTrigger=PropertyChanged, FallbackValue=''}"
+                                                                Style="{StaticResource InputTextBoxStyle}"/>
+                                                    <TextBlock Grid.Row="5" Text="AuthCode" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="5" Grid.Column="1"
+                                                                Text="{Binding SelectedAccount.AuthCode, UpdateSourceTrigger=PropertyChanged, FallbackValue=''}"
+                                                                Style="{StaticResource InputTextBoxStyle}"/>
+                                                </Grid>
+                                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                                    <ui:Button Content="保存修改" Appearance="Primary"
+                                                               Icon="{ui:SymbolIcon Save24}"
+                                                               Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                                               Command="{Binding UpdateCommand}" Margin="0,0,8,0" Padding="14,8"/>
+                                                    <ui:Button Content="删除账号"
+                                                               Icon="{ui:SymbolIcon Delete24}"
+                                                               Foreground="{DynamicResource SystemFillColorCriticalBrush}"
+                                                               Command="{Binding DeleteCommand}" Padding="14,8"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </ui:Card>
+                                        <!-- 右：新增账号表单 -->
+                                        <ui:Card Grid.Column="2" Padding="12" Background="{DynamicResource CardBackgroundBrush}">
+                                            <StackPanel>
+                                                <TextBlock Text="新增账号" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8"/>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="100"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                    </Grid.RowDefinitions>
+                                                    <TextBlock Grid.Row="0" Text="UserId*" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="0" Grid.Column="1" Text="{Binding NewUserId, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}"/>
+                                                    <TextBlock Grid.Row="1" Text="Title" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="1" Grid.Column="1" Text="{Binding NewTitle, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}"/>
+                                                    <TextBlock Grid.Row="2" Text="BrokerId" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="2" Grid.Column="1" Text="{Binding NewBrokerId, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}"/>
+                                                    <TextBlock Grid.Row="3" Text="Address" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="3" Grid.Column="1" Text="{Binding NewTradingAddress, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}"/>
+                                                    <TextBlock Grid.Row="4" Text="AppId" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="4" Grid.Column="1" Text="{Binding NewAppId, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}"/>
+                                                    <TextBlock Grid.Row="5" Text="AuthCode" Style="{StaticResource FieldLabelStyle}"/>
+                                                    <ui:TextBox Grid.Row="5" Grid.Column="1" Text="{Binding NewAuthCode, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource InputTextBoxStyle}"/>
+                                                </Grid>
+                                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                                    <ui:Button Content="新增" Appearance="Primary"
+                                                               Icon="{ui:SymbolIcon Add24}"
+                                                               Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}"
+                                                               Command="{Binding AddCommand}" Padding="14,8"/>
+                                                </StackPanel>
+                                                <TextBlock Text="提示：UserId 不能为空且必须唯一；新增后立即落盘。"
+                                                           Style="{StaticResource HintStyle}" Margin="0,8,0,0"/>
+                                            </StackPanel>
+                                        </ui:Card>
+                                    </Grid>
+                                </Grid>
+                            </DataTemplate>
+
                             <!-- 外观段：主题切换 -->
                             <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
                                 <StackPanel>
                                     <ui:CardControl Margin="0,0,0,8">
                                         <ui:CardControl.Header>
-                                            <TextBlock Text="外观 · 主题与视觉" FontWeight="SemiBold"/>
+                                            <TextBlock Text="外观 · 主题与视觉" Style="{StaticResource SectionTitleStyle}"/>
                                         </ui:CardControl.Header>
                                     </ui:CardControl>
-                                    <ui:Card Padding="16" Margin="0,0,0,8">
+                                    <ui:Card Style="{StaticResource SectionCardStyle}">
                                         <StackPanel>
-                                            <TextBlock Text="主题" FontWeight="SemiBold" Margin="0,0,0,12"/>
+                                            <TextBlock Text="主题" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,12"/>
                                             <StackPanel Orientation="Horizontal">
                                                 <RadioButton Content="深色 (Dark)" GroupName="Theme"
                                                              IsChecked="{Binding IsDarkTheme, Mode=TwoWay}"
+                                                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                              Margin="0,0,24,0" Padding="4,0"/>
                                                 <RadioButton Content="浅色 (Light)" GroupName="Theme"
                                                              IsChecked="{Binding IsLightTheme, Mode=TwoWay}"
+                                                             Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                                              Padding="4,0"/>
                                             </StackPanel>
                                             <TextBlock Text="主题切换即时生效，并持久化到 user-settings.json（下次启动自动应用）。"
-                                                       FontSize="11" Margin="0,12,0,0"
-                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                                       Style="{StaticResource HintStyle}" Margin="0,12,0,0"/>
                                         </StackPanel>
                                     </ui:Card>
                                 </StackPanel>
@@ -449,15 +727,15 @@
                     </ContentControl>
                 </ScrollViewer>
 
-                <!-- 状态栏（窗口分组段和外观段隐藏） -->
-                <ContentControl Grid.Row="2" Content="{Binding State}" Margin="0,8,0,0">
+                <!-- 状态栏（窗口分组段和外观段隐藏，配置段和交易账号段显示） -->
+                <ContentControl Grid.Row="2" Content="{Binding CurrentState}" Margin="0,8,0,0">
                     <ContentControl.Style>
                         <Style TargetType="ContentControl">
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding CurrentSectionIndex}" Value="3">
                                     <Setter Property="Visibility" Value="Collapsed"/>
                                 </DataTrigger>
-                                <DataTrigger Binding="{Binding CurrentSectionIndex}" Value="4">
+                                <DataTrigger Binding="{Binding CurrentSectionIndex}" Value="5">
                                     <Setter Property="Visibility" Value="Collapsed"/>
                                 </DataTrigger>
                             </Style.Triggers>
@@ -465,7 +743,7 @@
                     </ContentControl.Style>
                     <ContentControl.Resources>
                         <DataTemplate DataType="{x:Type vm:ConfigEditorState+Idle}">
-                            <TextBlock Text="● 未加载" Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                            <TextBlock Text="● 未加载" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                         </DataTemplate>
                         <DataTemplate DataType="{x:Type vm:ConfigEditorState+Loading}">
                             <TextBlock Text="● 正在加载..." Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
@@ -477,6 +755,21 @@
                             <TextBlock Text="● 正在保存..." Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
                         </DataTemplate>
                         <DataTemplate DataType="{x:Type vm:ConfigEditorState+Error}">
+                            <Border Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
+                                    CornerRadius="6" Padding="10,6">
+                                <TextBlock Text="{Binding Message}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap"/>
+                            </Border>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type vm:UserAccountEditorState+Idle}">
+                            <TextBlock Text="● 未加载账号" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type vm:UserAccountEditorState+Loading}">
+                            <TextBlock Text="● 正在加载账号..." Foreground="{DynamicResource SystemFillColorCautionBrush}"/>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type vm:UserAccountEditorState+Loaded}">
+                            <TextBlock Text="● 账号已加载，可新增/编辑/删除" Foreground="{DynamicResource SystemFillColorSuccessBrush}"/>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type vm:UserAccountEditorState+Error}">
                             <Border Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
                                     CornerRadius="6" Padding="10,6">
                                 <TextBlock Text="{Binding Message}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap"/>

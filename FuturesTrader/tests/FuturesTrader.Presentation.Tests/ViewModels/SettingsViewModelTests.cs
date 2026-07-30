@@ -4,6 +4,7 @@ using FuturesTrader.Application;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
 using FuturesTrader.Domain.Configuration;
+using FuturesTrader.Domain.Connections;
 using FuturesTrader.Domain.WindowGroups;
 using FuturesTrader.Presentation.Abstractions;
 using FuturesTrader.Presentation.Services;
@@ -34,6 +35,7 @@ public class SettingsViewModelTests
     {
         var repo = new InMemoryConfigRepository(seedConfig ?? SeedConfig);
         var options = Options.Create(new ConfigFileOptions { Path = "test.ini" });
+        var dataOptions = Options.Create(new DataFileOptions { UsersXml = "test_users.xml" });
         var groupService = new WindowGroupService(
             new InMemoryWindowGroupRepository(),
             new NullWindowHost(),
@@ -42,9 +44,13 @@ public class SettingsViewModelTests
         var windowGroups = new WindowGroupBarViewModel(
             groupService,
             NullLogger<WindowGroupBarViewModel>.Instance);
+        var accounts = new UserAccountEditorViewModel(
+            new InMemoryAccountRepository(),
+            dataOptions,
+            NullLogger<UserAccountEditorViewModel>.Instance);
         theme ??= new ThemeService();
         return new SettingsViewModel(
-            repo, options, windowGroups, theme,
+            repo, options, windowGroups, accounts, theme,
             NullLogger<SettingsViewModel>.Instance);
     }
 
@@ -154,11 +160,21 @@ public class SettingsViewModelTests
     }
 
     [Fact]
-    public void Switching_to_appearance_section_sets_current_segment_to_self()
+    public void Switching_to_accounts_section_sets_current_segment()
     {
         var vm = CreateVm();
 
         vm.CurrentSectionIndex = 4;
+
+        vm.CurrentSegment.Should().BeSameAs(vm.Accounts, "交易账号段绑定到 UserAccountEditorViewModel");
+    }
+
+    [Fact]
+    public void Switching_to_appearance_section_sets_current_segment_to_self()
+    {
+        var vm = CreateVm();
+
+        vm.CurrentSectionIndex = 5;
 
         vm.CurrentSegment.Should().BeSameAs(vm, "外观段绑定到 SettingsViewModel 自身（主题属性）");
     }
@@ -175,7 +191,7 @@ public class SettingsViewModelTests
             User = new UserConfig { HqAddress = "tcp://test:9999" }
         });
 
-        await vm.LoadCommand.ExecuteAsync(null);
+        await vm.LoadAsync();
 
         vm.State.Should().BeOfType<ConfigEditorState.Loaded>();
         vm.Window.MainFont.Should().Be("TestFont");
@@ -190,6 +206,7 @@ public class SettingsViewModelTests
     {
         var repo = new InMemoryConfigRepository(SeedConfig);
         var options = Options.Create(new ConfigFileOptions { Path = "test.ini" });
+        var dataOptions = Options.Create(new DataFileOptions { UsersXml = "test_users.xml" });
         var groupService = new WindowGroupService(
             new InMemoryWindowGroupRepository(),
             new NullWindowHost(),
@@ -198,11 +215,15 @@ public class SettingsViewModelTests
         var windowGroups = new WindowGroupBarViewModel(
             groupService,
             NullLogger<WindowGroupBarViewModel>.Instance);
+        var accounts = new UserAccountEditorViewModel(
+            new InMemoryAccountRepository(),
+            dataOptions,
+            NullLogger<UserAccountEditorViewModel>.Instance);
         var vm = new SettingsViewModel(
-            repo, options, windowGroups, new ThemeService(),
+            repo, options, windowGroups, accounts, new ThemeService(),
             NullLogger<SettingsViewModel>.Instance);
 
-        await vm.LoadCommand.ExecuteAsync(null);
+        await vm.LoadAsync();
         vm.Window.MainFont = "ModifiedFont";
         vm.Order.MaxInputCount = 99;
 
@@ -215,11 +236,16 @@ public class SettingsViewModelTests
     }
 
     [Fact]
-    public async Task Save_disabled_before_load()
+    public void Save_disabled_while_loading()
     {
         var vm = CreateVm();
 
-        vm.SaveCommand.CanExecute(null).Should().BeFalse("未加载时不可保存");
+        // 等到 Loaded 状态（构造期间是 Loading 短暂窗口，竞态难测）
+        // 然后用反射强制设回 Loading 以验证 CanExecute 守门
+        var prop = typeof(SettingsViewModel).GetProperty(nameof(SettingsViewModel.State))!;
+        prop.SetValue(vm, new ConfigEditorState.Loading());
+
+        vm.SaveCommand.CanExecute(null).Should().BeFalse("Loading 状态 Save 不可执行");
     }
 
     [Fact]
@@ -227,7 +253,7 @@ public class SettingsViewModelTests
     {
         var vm = CreateVm();
 
-        await vm.LoadCommand.ExecuteAsync(null);
+        await vm.LoadAsync();
 
         vm.SaveCommand.CanExecute(null).Should().BeTrue("加载后应可保存");
     }
@@ -271,4 +297,40 @@ internal sealed class NullWindowHost : IWindowHost
     public void Focus(string instrumentCode) { }
     public void Close(string instrumentCode) { }
     public void CloseGroup(int groupId) { }
+}
+
+/// <summary>
+/// 内存账号仓库：用于测试 UserAccountEditorViewModel 的 CRUD，不读写 Users.xml。
+/// </summary>
+internal sealed class InMemoryAccountRepository : IAccountRepository
+{
+    private readonly Dictionary<string, AccountEntry> _entries = new(StringComparer.Ordinal);
+
+    public IReadOnlyList<AccountEntry> Load(string usersXmlPath) =>
+        _entries.Values.OrderBy(e => e.UserId, StringComparer.Ordinal).ToList();
+
+    public void Add(string usersXmlPath, AccountEntry account)
+    {
+        if (string.IsNullOrWhiteSpace(account.UserId))
+            throw new ArgumentException("UserId 不能为空", nameof(account));
+        if (_entries.ContainsKey(account.UserId))
+            throw new InvalidOperationException($"UserId 已存在：{account.UserId}");
+        _entries[account.UserId] = account;
+    }
+
+    public void Update(string usersXmlPath, AccountEntry account)
+    {
+        if (string.IsNullOrWhiteSpace(account.UserId))
+            throw new ArgumentException("UserId 不能为空", nameof(account));
+        if (!_entries.ContainsKey(account.UserId))
+            throw new InvalidOperationException($"未找到账号 {account.UserId}");
+        _entries[account.UserId] = account;
+    }
+
+    public void Delete(string usersXmlPath, string userId)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new ArgumentException("UserId 不能为空", nameof(userId));
+        _entries.Remove(userId);
+    }
 }

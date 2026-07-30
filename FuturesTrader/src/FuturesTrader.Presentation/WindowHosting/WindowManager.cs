@@ -133,6 +133,14 @@ public sealed class WindowManager : IWindowHost
             return;
         }
 
+        // 单组显示：先把其他分组的窗口隐藏（不关，保留 VM/状态/订阅），
+        // 避免多组同屏混乱。对齐 0527.exe「点组号 → 只显该组」的语义。
+        HideOtherGroups(groupId);
+
+        // 强制重排当前组：先关掉当前已开的同组窗口（关事件会回写最新位置到 layout），
+        // 再 OpenGroup 用布局中的位置紧排。下次切回该组时不会因上次拖动基线错位而重叠。
+        CloseGroup(groupId);
+
         // 水平紧密排列 + 整组居中：计算总宽度后从屏幕工作区水平居中起始
         var workArea = SystemParameters.WorkArea;
         var startY = workArea.Top + 8;
@@ -144,22 +152,35 @@ public sealed class WindowManager : IWindowHost
         for (var i = 0; i < windows.Count; i++)
         {
             var w = windows[i];
-            // 首次打开的窗口按紧密排列设置 Left/Top；已打开的保持原位
-            if (!IsOpen(w.InstrumentCode))
-            {
-                var arranged = w with { Left = (int)currentX, Top = (int)startY };
-                currentX += windowWidths[i] + spacing;
-                Open(arranged);
-            }
-            else
-            {
-                Open(w);
-            }
+            var arranged = w with { Left = (int)currentX, Top = (int)startY };
+            currentX += windowWidths[i] + spacing;
+            Open(arranged);
         }
 
-        _logger.LogInformation("已打开分组 {GroupId} 的 {Count} 个窗口（水平紧密排列）",
+        _logger.LogInformation("已打开分组 {GroupId} 的 {Count} 个窗口（隐藏其他组 + 重排）",
             groupId, windows.Count);
     });
+
+    /// <summary>隐藏所有非 <paramref name="keepGroupId"/> 分组的窗口（不关，保留 VM 状态）。</summary>
+    private int HideOtherGroups(int keepGroupId)
+    {
+        List<Window> toHide;
+        lock (_open)
+        {
+            toHide = _open
+                .Where(kv => kv.Value.GroupId != keepGroupId)
+                .Select(kv => kv.Value.Window)
+                .ToList();
+        }
+        foreach (var w in toHide)
+        {
+            try { w.Hide(); }
+            catch (Exception ex) { _logger.LogWarning(ex, "隐藏窗口失败"); }
+        }
+        if (toHide.Count > 0)
+            _logger.LogDebug("已隐藏 {Count} 个非同组窗口（保留组 {Keep}）", toHide.Count, keepGroupId);
+        return toHide.Count;
+    }
 
     /// <inheritdoc />
     public IReadOnlyList<string> GetOpenWindowsInGroup(int groupId)

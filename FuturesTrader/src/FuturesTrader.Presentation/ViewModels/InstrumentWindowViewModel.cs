@@ -29,4 +29,16 @@ public sealed partial class InstrumentWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void Unassign() => Parent.UnassignWindow(InstrumentCode);
+
+    [RelayCommand(CanExecute = nameof(CanMoveUp))]
+    private void MoveUp() => Parent.MoveWindow(InstrumentCode, -1);
+
+    [RelayCommand(CanExecute = nameof(CanMoveDown))]
+    private void MoveDown() => Parent.MoveWindow(InstrumentCode, +1);
+
+    /// <summary>是否可在当前组内上移（不在首位时 true）。</summary>
+    public bool CanMoveUp() => Parent.CanMoveWindowUp(InstrumentCode);
+
+    /// <summary>是否可在当前组内下移（不在末位时 true）。</summary>
+    public bool CanMoveDown() => Parent.CanMoveWindowDown(InstrumentCode);
 }

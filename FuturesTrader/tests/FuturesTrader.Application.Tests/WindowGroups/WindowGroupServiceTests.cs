@@ -190,6 +190,175 @@ public class WindowGroupServiceTests
         act.Should().Throw<ArgumentException>();
     }
 
+    // ── ReorderWindowInGroup（组内上下移动） ─────────────────
+
+    [Fact]
+    public void ReorderWindowInGroup_moves_up_within_same_group()
+    {
+        // 场景：组 1 三个窗口 [ag2608, ag2610, ag2612]；把 ag2610 移到首位
+        var layout = new WindowLayout
+        {
+            Windows =
+            [
+                new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1, Top = 10 },
+                new InstrumentWindow { InstrumentCode = "ag2610", GroupId = 1, Top = 20 },
+                new InstrumentWindow { InstrumentCode = "ag2612", GroupId = 1, Top = 30 },
+                new InstrumentWindow { InstrumentCode = "cu2609", GroupId = 2, Top = 40 }
+            ]
+        };
+
+        var result = _service.ReorderWindowInGroup(layout, "ag2610", -1);
+
+        // 新顺序：ag2610 升到组 1 的首位，组 2 跨组窗口保持原位
+        result.Windows.Select(w => w.InstrumentCode).Should().Equal("ag2610", "ag2608", "ag2612", "cu2609");
+        // 字段保持：每个窗口的 Top/GroupId 等不动
+        result.Windows.First(w => w.InstrumentCode == "ag2610").Top.Should().Be(20);
+        result.Windows.First(w => w.InstrumentCode == "ag2608").Top.Should().Be(10);
+    }
+
+    [Fact]
+    public void ReorderWindowInGroup_moves_down_within_same_group()
+    {
+        // 场景：组 1 [ag2608, ag2610, ag2612]；把 ag2610 移到末位
+        var layout = new WindowLayout
+        {
+            Windows =
+            [
+                new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1 },
+                new InstrumentWindow { InstrumentCode = "ag2610", GroupId = 1 },
+                new InstrumentWindow { InstrumentCode = "ag2612", GroupId = 1 }
+            ]
+        };
+
+        var result = _service.ReorderWindowInGroup(layout, "ag2610", +1);
+
+        result.Windows.Select(w => w.InstrumentCode).Should().Equal("ag2608", "ag2612", "ag2610");
+    }
+
+    [Fact]
+    public void ReorderWindowInGroup_at_first_position_moves_up_is_noop()
+    {
+        var layout = new WindowLayout
+        {
+            Windows =
+            [
+                new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1 },
+                new InstrumentWindow { InstrumentCode = "ag2610", GroupId = 1 }
+            ]
+        };
+
+        var result = _service.ReorderWindowInGroup(layout, "ag2608", -1);
+
+        // 首位的窗口上移无效 → 顺序保持
+        result.Windows.Select(w => w.InstrumentCode).Should().Equal("ag2608", "ag2610");
+    }
+
+    [Fact]
+    public void ReorderWindowInGroup_at_last_position_moves_down_is_noop()
+    {
+        var layout = new WindowLayout
+        {
+            Windows =
+            [
+                new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1 },
+                new InstrumentWindow { InstrumentCode = "ag2610", GroupId = 1 }
+            ]
+        };
+
+        var result = _service.ReorderWindowInGroup(layout, "ag2610", +1);
+
+        result.Windows.Select(w => w.InstrumentCode).Should().Equal("ag2608", "ag2610");
+    }
+
+    [Fact]
+    public void ReorderWindowInGroup_does_not_cross_groups()
+    {
+        // 场景：组 1 [ag2608]，组 2 [cu2609]；把 cu2609 移到 -1（试图升到组 1 之上）
+        // 但跨组时只看本组子序列 → cu2609 在组 2 内已在首位，noop
+        var layout = new WindowLayout
+        {
+            Windows =
+            [
+                new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1 },
+                new InstrumentWindow { InstrumentCode = "cu2609", GroupId = 2 }
+            ]
+        };
+
+        var result = _service.ReorderWindowInGroup(layout, "cu2609", -1);
+
+        // cu2609 在组 2 内已经首位 → noop
+        result.Windows.Select(w => w.InstrumentCode).Should().Equal("ag2608", "cu2609");
+    }
+
+    [Fact]
+    public void ReorderWindowInGroup_throws_for_invalid_delta()
+    {
+        var layout = new WindowLayout
+        {
+            Windows = [new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1 }]
+        };
+
+        var act = () => _service.ReorderWindowInGroup(layout, "ag2608", 2);
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
+    public void ReorderWindowInGroup_returns_same_layout_when_code_not_found()
+    {
+        var layout = new WindowLayout
+        {
+            Windows = [new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1 }]
+        };
+
+        var result = _service.ReorderWindowInGroup(layout, "missing", -1);
+
+        result.Should().BeSameAs(layout);
+    }
+
+    [Fact]
+    public void CanMoveUp_returns_false_at_first_position()
+    {
+        var layout = new WindowLayout
+        {
+            Windows =
+            [
+                new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1 },
+                new InstrumentWindow { InstrumentCode = "ag2610", GroupId = 1 }
+            ]
+        };
+
+        _service.CanMoveUp(layout, "ag2608").Should().BeFalse();
+        _service.CanMoveUp(layout, "ag2610").Should().BeTrue();
+    }
+
+    [Fact]
+    public void CanMoveDown_returns_false_at_last_position()
+    {
+        var layout = new WindowLayout
+        {
+            Windows =
+            [
+                new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1 },
+                new InstrumentWindow { InstrumentCode = "ag2610", GroupId = 1 }
+            ]
+        };
+
+        _service.CanMoveDown(layout, "ag2608").Should().BeTrue();
+        _service.CanMoveDown(layout, "ag2610").Should().BeFalse();
+    }
+
+    [Fact]
+    public void CanMove_returns_false_for_unknown_window()
+    {
+        var layout = new WindowLayout
+        {
+            Windows = [new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1 }]
+        };
+
+        _service.CanMoveUp(layout, "missing").Should().BeFalse();
+        _service.CanMoveDown(layout, "missing").Should().BeFalse();
+    }
+
     // ── Load / Save 转发 ─────────────────────────────────────
 
     [Fact]

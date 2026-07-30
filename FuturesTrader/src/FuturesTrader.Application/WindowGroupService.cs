@@ -68,6 +68,61 @@ public sealed class WindowGroupService
         return layout with { Windows = windows };
     }
 
+    /// <summary>
+    /// 在分组内上下移动合约窗口的排列顺序（仅影响 <c>layout.Windows</c> 数组顺序，不动其他字段）。
+    /// <para>
+    /// <paramref name="delta"/> 为 -1（上移 / 左移）或 +1（下移 / 右移）。已在组内首/尾时为 no-op。
+    /// 新顺序在保存时写回 Users.xml 元素位置，下次 OpenGroup 也按此顺序紧密排列。
+    /// </para>
+    /// </summary>
+    public WindowLayout ReorderWindowInGroup(WindowLayout layout, string instrumentCode, int delta)
+    {
+        ValidateInstrumentCode(instrumentCode);
+        if (delta is not (-1 or 1))
+            throw new ArgumentOutOfRangeException(nameof(delta), delta, "仅支持 ±1 步进");
+
+        // 只看同组的子序列；保序时跨组窗口不动
+        var groupWindows = layout.Windows
+            .Select((w, idx) => (w, idx))
+            .Where(t => t.w.InstrumentCode == instrumentCode || t.w.GroupId == GetGroupOf(layout, instrumentCode))
+            .ToList();
+
+        var currentPos = groupWindows.FindIndex(t => t.w.InstrumentCode == instrumentCode);
+        if (currentPos < 0) return layout;  // window not in layout
+
+        var newPos = currentPos + delta;
+        if (newPos < 0 || newPos >= groupWindows.Count) return layout;  // already at edge
+
+        // 交换原数组中的两个真实索引
+        var originalIdxA = groupWindows[currentPos].idx;
+        var originalIdxB = groupWindows[newPos].idx;
+        var arr = layout.Windows.ToArray();
+        (arr[originalIdxA], arr[originalIdxB]) = (arr[originalIdxB], arr[originalIdxA]);
+        return layout with { Windows = arr };
+    }
+
+    /// <summary>读取指定合约所在分组号（找不到返回 0）。</summary>
+    private static int GetGroupOf(WindowLayout layout, string instrumentCode) =>
+        layout.Windows.FirstOrDefault(w => w.InstrumentCode == instrumentCode)?.GroupId ?? 0;
+
+    /// <summary>判断某窗口是否可在组内向上移动（不在首位）。</summary>
+    public bool CanMoveUp(WindowLayout layout, string instrumentCode)
+    {
+        var group = GetGroupOf(layout, instrumentCode);
+        if (group == 0) return false;
+        var groupWindows = layout.Windows.Where(w => w.GroupId == group).ToList();
+        return groupWindows.Count > 0 && groupWindows[0].InstrumentCode != instrumentCode;
+    }
+
+    /// <summary>判断某窗口是否可在组内向下移动（不在末位）。</summary>
+    public bool CanMoveDown(WindowLayout layout, string instrumentCode)
+    {
+        var group = GetGroupOf(layout, instrumentCode);
+        if (group == 0) return false;
+        var groupWindows = layout.Windows.Where(w => w.GroupId == group).ToList();
+        return groupWindows.Count > 0 && groupWindows[^1].InstrumentCode != instrumentCode;
+    }
+
     /// <summary>重命名指定分组（仅改该组 Name，其余组不变）。</summary>
     public WindowLayout RenameGroup(WindowLayout layout, int groupId, string newName)
     {

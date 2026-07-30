@@ -105,6 +105,28 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     /// <summary>挂单模式 A/B（与点价窗口 ChgOrder 联动）。</summary>
     [ObservableProperty] private FloatingAbMode _abMode = FloatingAbMode.A;
 
+    /// <summary>显示范围模式选项（供 <c>SegmentedControl</c> 绑定，复刻 0527 浮动栏「单/多/全部」）。</summary>
+    public IReadOnlyList<OptionItem> DisplayModeOptions { get; } = new[]
+    {
+        new OptionItem(FloatingDisplayMode.Single, "单", "仅显示当前选中分组"),
+        new OptionItem(FloatingDisplayMode.Multi,  "多", "显示多个分组"),
+        new OptionItem(FloatingDisplayMode.All,   "全部", "显示全部分组"),
+    };
+
+    /// <summary>开平仓模式选项（供 <c>SegmentedControl</c> 绑定，复刻「仓/平」二选一）。</summary>
+    public IReadOnlyList<OptionItem> OrderModeOptions { get; } = new[]
+    {
+        new OptionItem(FloatingOrderMode.Open,  "仓", "开仓模式（OnlyOpen=true）"),
+        new OptionItem(FloatingOrderMode.Close, "平", "平仓模式（OnlyOpen=false，P 标识）"),
+    };
+
+    /// <summary>挂单模式 A/B 选项（供 <c>SegmentedControl</c> 绑定，对齐 0527 Users.xml RBOA/RBOB）。</summary>
+    public IReadOnlyList<OptionItem> AbModeOptions { get; } = new[]
+    {
+        new OptionItem(FloatingAbMode.A, "A", "单方向单点（RBOA）"),
+        new OptionItem(FloatingAbMode.B, "B", "单方向多点（RBOB）"),
+    };
+
     /// <summary>标尺开关（显示价格标尺）。</summary>
     [ObservableProperty] private bool _showRuler = true;
 

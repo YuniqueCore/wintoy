@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:vm="clr-namespace:FuturesTrader.Presentation.ViewModels"
+        xmlns:controls="clr-namespace:FuturesTrader.Presentation.Controls"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:FloatingMainViewModel}"
         Title="浮动工具栏"
@@ -37,15 +38,6 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
-
-        <!-- 互斥切换按钮样式（单/多/全部 · 仓/平 · A/B） -->
-        <Style x:Key="SegmentButtonStyle" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
-            <Setter Property="Width" Value="44"/>
-            <Setter Property="Height" Value="26"/>
-            <Setter Property="Margin" Value="1,0"/>
-            <Setter Property="Padding" Value="0"/>
-            <Setter Property="FontSize" Value="12"/>
-        </Style>
     </Window.Resources>
 
     <Border BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="1" CornerRadius="0"
@@ -69,16 +61,9 @@
                 <!-- 右侧功能按钮组 -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
                     <!-- 单/多/全部 互斥分段 -->
-                    <Border BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="1" CornerRadius="4">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton Content="单" Style="{StaticResource SegmentButtonStyle}"
-                                         IsChecked="{Binding DisplayMode, Converter={StaticResource EnumToBool}, ConverterParameter=Single, Mode=TwoWay}"/>
-                            <RadioButton Content="多" Style="{StaticResource SegmentButtonStyle}"
-                                         IsChecked="{Binding DisplayMode, Converter={StaticResource EnumToBool}, ConverterParameter=Multi, Mode=TwoWay}"/>
-                            <RadioButton Content="全部" Style="{StaticResource SegmentButtonStyle}"
-                                         IsChecked="{Binding DisplayMode, Converter={StaticResource EnumToBool}, ConverterParameter=All, Mode=TwoWay}"/>
-                        </StackPanel>
-                    </Border>
+                    <controls:SegmentedControl ItemsSource="{Binding DisplayModeOptions}"
+                                               SelectedValue="{Binding DisplayMode, Mode=TwoWay}"
+                                               LabelSelector="Label"/>
                     <ui:Button Content="模式" Padding="8,3" Margin="4,0,0,0"/>
                     <ui:Button Content="两排" Padding="8,3" Margin="2,0,0,0"/>
                     <!-- 合约搜索 autocomplete：输入代码/名称 → 过滤下拉 → 选中添加到当前分组 -->
@@ -139,24 +124,16 @@
                     <ui:Button Content="撤组" Padding="8,3" Margin="2,0,0,0"/>
                     <CheckBox Content="标尺" IsChecked="{Binding ShowRuler}" Margin="6,0,0,0" VerticalAlignment="Center"/>
                     <CheckBox Content="白格" IsChecked="{Binding ShowWhiteGrid}" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                    <!-- 仓/平 互斥 -->
-                    <Border BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="1" CornerRadius="4" Margin="8,0,0,0">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton Content="仓" Style="{StaticResource SegmentButtonStyle}"
-                                         IsChecked="{Binding OrderMode, Converter={StaticResource EnumToBool}, ConverterParameter=Open, Mode=TwoWay}"/>
-                            <RadioButton Content="平" Style="{StaticResource SegmentButtonStyle}"
-                                         IsChecked="{Binding OrderMode, Converter={StaticResource EnumToBool}, ConverterParameter=Close, Mode=TwoWay}"/>
-                        </StackPanel>
-                    </Border>
-                    <!-- A/B 互斥 -->
-                    <Border BorderBrush="{DynamicResource ControlElevationBorderBrush}" BorderThickness="1" CornerRadius="4" Margin="4,0,0,0">
-                        <StackPanel Orientation="Horizontal">
-                            <RadioButton Content="A" Style="{StaticResource SegmentButtonStyle}"
-                                         IsChecked="{Binding AbMode, Converter={StaticResource EnumToBool}, ConverterParameter=A, Mode=TwoWay}"/>
-                            <RadioButton Content="B" Style="{StaticResource SegmentButtonStyle}"
-                                         IsChecked="{Binding AbMode, Converter={StaticResource EnumToBool}, ConverterParameter=B, Mode=TwoWay}"/>
-                        </StackPanel>
-                    </Border>
+                    <!-- 仓/平 互斥分段 -->
+                    <controls:SegmentedControl ItemsSource="{Binding OrderModeOptions}"
+                                               SelectedValue="{Binding OrderMode, Mode=TwoWay}"
+                                               LabelSelector="Label"
+                                               Margin="8,0,0,0"/>
+                    <!-- A/B 互斥分段 -->
+                    <controls:SegmentedControl ItemsSource="{Binding AbModeOptions}"
+                                               SelectedValue="{Binding AbMode, Mode=TwoWay}"
+                                               LabelSelector="Label"
+                                               Margin="4,0,0,0"/>
                 </StackPanel>
 
                 <!-- 中间：分组 11-20 -->

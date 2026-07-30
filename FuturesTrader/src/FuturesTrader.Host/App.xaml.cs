@@ -189,6 +189,7 @@ public partial class App : System.Windows.Application
 
                 // ── 设置窗口（瞬态：每次打开都是新实例，关闭即释放）──
                 services.AddSingleton<WindowGroupBarViewModel>();
+                services.AddSingleton<UserAccountEditorViewModel>();
                 services.AddTransient<SettingsViewModel>();
                 services.AddTransient<SettingsWindow>();
 
