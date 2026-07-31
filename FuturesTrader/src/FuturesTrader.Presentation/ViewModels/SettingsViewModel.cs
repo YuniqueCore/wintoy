@@ -23,7 +23,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ConfigFileOptions _options;
     private readonly IThemeService _theme;
     private readonly ILogger<SettingsViewModel> _logger;
+    private readonly object _loadSync = new();
     private CloudConfig? _loadedConfig;
+    private Task? _activeLoadTask;
 
     public SettingsViewModel(
         IConfigRepository repo,
@@ -155,9 +157,21 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>
     /// 加载配置到 VM（公开：构造时自动调用一次，测试可显式重新加载以重置 VM 字段）。
-    /// Loaded 状态可用。
+    /// 自动加载尚未完成时，重复调用会返回同一个任务，避免重复 I/O 与较早结果覆盖较晚状态。
     /// </summary>
-    public async Task LoadAsync()
+    public Task LoadAsync()
+    {
+        lock (_loadSync)
+        {
+            if (_activeLoadTask is { IsCompleted: false })
+                return _activeLoadTask;
+
+            _activeLoadTask = LoadCoreAsync();
+            return _activeLoadTask;
+        }
+    }
+
+    private async Task LoadCoreAsync()
     {
         State = new ConfigEditorState.Loading();
         try

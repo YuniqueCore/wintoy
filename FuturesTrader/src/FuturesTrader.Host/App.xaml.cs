@@ -119,6 +119,22 @@ public partial class App : System.Windows.Application
                 services.AddSingleton<IWindowGroupRepository, UsersXmlWindowGroupRepository>();
                 services.AddSingleton<IHqAddressRepository, HqAddressXmlRepository>();
                 services.AddSingleton<IAccountRepository, UsersXmlAccountRepository>();
+                services.AddSingleton(sp =>
+                {
+                    var configRepository = sp.GetRequiredService<IConfigRepository>();
+                    var configOptions = sp.GetRequiredService<IOptions<ConfigFileOptions>>().Value;
+                    try
+                    {
+                        var runMode = configRepository.Load(configOptions.Path).User.RunMode;
+                        Log.Information("旧版 RunMode 已加载：{RunMode}", runMode);
+                        return new LegacyTradingRuntime(runMode);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warning(ex, "加载旧版 RunMode 失败，使用安全默认值 0");
+                        return new LegacyTradingRuntime();
+                    }
+                });
 
                 // ── 网络测速 ──
                 services.AddSingleton<IConnectionProbeService, TcpConnectionProbeService>();
@@ -132,7 +148,7 @@ public partial class App : System.Windows.Application
                     var opts = sp.GetRequiredService<IOptions<MarketDataOptions>>().Value;
                     var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
                     return opts.Provider == MarketDataProvider.Ctp
-                        ? new CtpMarketDataServiceFactory(loggerFactory, opts.PriceLadderLevels)
+                        ? new CtpMarketDataServiceFactory(loggerFactory, opts.PriceLadderLevels, opts.ApiRuntimeMode)
                         : new SimulatedMarketDataServiceFactory(loggerFactory, opts.MockTickIntervalMs);
                 });
                 services.AddSingleton<ITradingServiceFactory>(sp =>
@@ -140,7 +156,7 @@ public partial class App : System.Windows.Application
                     var opts = sp.GetRequiredService<IOptions<TradingOptions>>().Value;
                     var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
                     return opts.Provider == TradingProvider.Ctp
-                        ? new CtpTradingServiceFactory(loggerFactory)
+                        ? new CtpTradingServiceFactory(loggerFactory, opts.ApiRuntimeMode)
                         : new MockTradingServiceFactory(loggerFactory);
                 });
 
@@ -149,8 +165,11 @@ public partial class App : System.Windows.Application
 
                 // ── 窗口分组 + 窗口宿主 + 成组同步 ──
                 services.AddSingleton<WindowGroupService>();
-                services.AddSingleton<IWindowHost, WindowManager>();
+                services.AddSingleton<IGlobalOrderCancellationService, GlobalOrderCancellationService>();
                 services.AddSingleton<GroupSynchronizationCoordinator>();
+                services.AddSingleton<WindowManager>();
+                services.AddSingleton<IWindowHost>(sp => sp.GetRequiredService<WindowManager>());
+                services.AddSingleton<ITradingWindowInteractionService>(sp => sp.GetRequiredService<WindowManager>());
 
                 // ── 合约窗口 VM 依赖（TradingViewModel 通过 ActivatorUtilities 创建，需 DI 解析剩余参数）──
                 services.Configure<SoundOptions>(ctx.Configuration.GetSection("Sound"));

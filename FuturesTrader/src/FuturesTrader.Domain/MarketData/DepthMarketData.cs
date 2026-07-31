@@ -54,40 +54,48 @@ public sealed record DepthMarketData
         pendingByPrice ??= new Dictionary<decimal, int>();
 
         var rows = new List<PriceLevel>(levels * 2 + 1);
-        // 上方卖盘（空单挂单区，红色）：价格从高到低，最接近 LastPrice 的在最下
+        // 上方价格行：有卖方报价时以红色显示；没有报价时是中性的无人报价行。
         for (int i = levels; i >= 1; i--)
         {
             var price = LastPrice + i * priceTick;
+            var askVolume = VolumeAt(price, AskPrices, AskVolumes, priceTick);
             rows.Add(new PriceLevel
             {
                 Price = price,
-                AskVolume = VolumeAt(price, AskPrices, AskVolumes, priceTick),
+                AskVolume = askVolume,
                 BidVolume = 0,
                 PendingOrderCount = LookupPending(pendingByPrice, price, priceTick),
-                Zone = PriceZone.Ask
+                DisplayZone = askVolume > 0 ? PriceDisplayZone.AskQuote : PriceDisplayZone.Unquoted
             });
         }
-        // 中心最新价行
+        // 最新价行可能同时有报价，也可能位于无人报价中间区；最新价标记与颜色分开。
+        var centerAskVolume = VolumeAt(LastPrice, AskPrices, AskVolumes, priceTick);
+        var centerBidVolume = VolumeAt(LastPrice, BidPrices, BidVolumes, priceTick);
         rows.Add(new PriceLevel
         {
             Price = LastPrice,
             IsLastPrice = true,
-            AskVolume = VolumeAt(LastPrice, AskPrices, AskVolumes, priceTick),
-            BidVolume = VolumeAt(LastPrice, BidPrices, BidVolumes, priceTick),
+            AskVolume = centerAskVolume,
+            BidVolume = centerBidVolume,
             PendingOrderCount = LookupPending(pendingByPrice, LastPrice, priceTick),
-            Zone = PriceZone.Center
+            DisplayZone = centerAskVolume > 0
+                ? PriceDisplayZone.AskQuote
+                : centerBidVolume > 0
+                    ? PriceDisplayZone.BidQuote
+                    : PriceDisplayZone.Unquoted
         });
-        // 下方买盘（多单挂单区，蓝色）：价格从低到高，最接近 LastPrice 的在最上
+        // 下方价格行：有买方报价时以蓝色显示；没有报价时是中性的无人报价行。
         for (int i = 1; i <= levels; i++)
         {
             var price = LastPrice - i * priceTick;
+            var bidVolume = VolumeAt(price, BidPrices, BidVolumes, priceTick);
             rows.Add(new PriceLevel
             {
                 Price = price,
-                BidVolume = VolumeAt(price, BidPrices, BidVolumes, priceTick),
+                BidVolume = bidVolume,
                 AskVolume = 0,
                 PendingOrderCount = LookupPending(pendingByPrice, price, priceTick),
-                Zone = PriceZone.Bid
+                DisplayZone = bidVolume > 0 ? PriceDisplayZone.BidQuote : PriceDisplayZone.Unquoted
             });
         }
         return new PriceLadder(levels, LastPrice, priceTick, rows);

@@ -7,7 +7,9 @@ using FuturesTrader.Application;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
 using FuturesTrader.Domain.MarketData;
+using FuturesTrader.Domain.Trading;
 using FuturesTrader.Domain.WindowGroups;
+using FuturesTrader.Presentation.Abstractions;
 using FuturesTrader.Presentation.WindowHosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -21,7 +23,7 @@ namespace FuturesTrader.Presentation.ViewModels;
 /// 资金摘要由 <see cref="AccountSummaryViewModel"/> 订阅 <see cref="ITradingService"/> 流聚合。
 /// </para>
 /// <para>
-/// 模式开关（单/多/全部·仓/平·A/B·标尺/白格/两排）与点价窗口双向联动（M4-C ContractWindowViewModel 订阅）。
+/// 仓/平和 A/B 全局动作由窗口宿主应用到已经创建的合约窗口；未打开窗口仍按其自身 Users.xml 配置创建。
 /// <see cref="AlwaysOnTop"/> 控制窗口 Topmost（对齐 0527.exe「置顶可取消，配置按钮控制」）。
 /// </para>
 /// </summary>
@@ -30,6 +32,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     private readonly ISessionService _session;
     private readonly WindowGroupService _groupService;
     private readonly IWindowHost _windowHost;
+    private readonly ITradingWindowInteractionService _tradingWindowInteraction;
     private readonly GroupSynchronizationCoordinator _sync;
     private readonly UiOptions _uiOptions;
     private readonly ILogger<FloatingMainViewModel> _logger;
@@ -43,6 +46,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
         ISessionService session,
         WindowGroupService groupService,
         IWindowHost windowHost,
+        ITradingWindowInteractionService tradingWindowInteraction,
         GroupSynchronizationCoordinator sync,
         IOptions<UiOptions> uiOptions,
         ILogger<FloatingMainViewModel> logger,
@@ -51,6 +55,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
         _session = session;
         _groupService = groupService;
         _windowHost = windowHost;
+        _tradingWindowInteraction = tradingWindowInteraction;
         _sync = sync;
         _uiOptions = uiOptions.Value;
         _logger = logger;
@@ -130,7 +135,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     /// <summary>标尺开关（显示价格标尺）。</summary>
     [ObservableProperty] private bool _showRuler = true;
 
-    /// <summary>白格开关（与点价窗口白格单锁联动）。</summary>
+    /// <summary>浮动栏白格显示偏好。CBBGDS 的全局传播尚无已证实调用链，故不以该值改写合约窗下单限制。</summary>
     [ObservableProperty] private bool _showWhiteGrid;
 
     /// <summary>两排布局开关（价格梯子双排显示）。</summary>
@@ -138,6 +143,15 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
 
     /// <summary>窗口置顶开关（Topmost，对齐 0527.exe 配置按钮控制）。</summary>
     [ObservableProperty] private bool _alwaysOnTop;
+
+    /// <summary>浮动栏「仓/平」改变时，只影响已创建的合约窗口。</summary>
+    partial void OnOrderModeChanged(FloatingOrderMode value) =>
+        _tradingWindowInteraction.ApplyOnlyOpenToOpenWindows(value == FloatingOrderMode.Open);
+
+    /// <summary>浮动栏 A/B 动作对应旧版遍历全局 TYYWin 列表逐个勾选 RBOA/RBOB。</summary>
+    partial void OnAbModeChanged(FloatingAbMode value) =>
+        _tradingWindowInteraction.ApplyOrderPlacementModeToOpenWindows(
+            value == FloatingAbMode.A ? OrderPlacementMode.ReplaceSameDirection : OrderPlacementMode.Append);
 
     /// <summary>窗口同步模式（成组联动 / 完全独立）。</summary>
     [ObservableProperty] private WindowSyncMode _syncMode = WindowSyncMode.Grouped;
@@ -216,10 +230,8 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     {
         try
         {
-            if (_layout is null)
-            {
-                _layout = _groupService.Load();
-            }
+            // 关闭窗口会回写 Users.xml；每次切组重新读，避免拿旧快照覆盖刚持久化的 A/B/仓平设置。
+            _layout = _groupService.Load();
             _groupService.OpenGroup(_layout, groupId);
             SelectedGroupId = groupId;
             foreach (var btn in Groups) btn.IsSelected = btn.Id == groupId;
@@ -308,7 +320,8 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
         if (instrument is null || SelectedGroupId < 1) return;
         try
         {
-            if (_layout is null) _layout = _groupService.Load();
+            // 始终从持久化布局合并，不能用初始化时的旧快照覆盖窗口关闭后的回写。
+            _layout = _groupService.Load();
             _layout = _groupService.AssignWindowToGroup(_layout, instrument.InstrumentId, SelectedGroupId);
             _groupService.Save(_layout);
             RefreshGroupButtons();

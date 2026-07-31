@@ -61,13 +61,12 @@ public class ThemeTests
     /// </remarks>
     private Window OpenSettingsWindow()
     {
-        var loginWindow = _fixture.LoginWindow!;
         _fixture.CloseChildWindows();
         _fixture.EnsureLoginWindowForeground();
 
-        // 等待"设置"按钮在 UIA 树中出现（FluentWindow 内容渲染有延迟）
+        // 每次轮询都刷新 LoginWindow，避免上一轮 SettingsWindow 生命周期留下陈旧 UIA 子树。
         var settingsBtn = UiTestHelpers.WaitFor(() =>
-            loginWindow.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByName("设置"))?.AsButton(),
+            UiTestHelpers.FindOpenSettingsButton(_fixture),
             TimeSpan.FromSeconds(10));
         settingsBtn.Should().NotBeNull("设置按钮应存在");
 

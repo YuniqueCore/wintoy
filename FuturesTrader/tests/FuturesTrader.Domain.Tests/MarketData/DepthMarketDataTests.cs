@@ -110,5 +110,24 @@ public class DepthMarketDataTests
         ladder.Rows.Should().HaveCount(7);
         ladder.Center!.IsLastPrice.Should().BeTrue();
         ladder.Rows.All(r => r.BidVolume == 0 && r.AskVolume == 0).Should().BeTrue();
+        ladder.Rows.Should().OnlyContain(row => row.DisplayZone == PriceDisplayZone.Unquoted,
+            "无人报价中间行不能被错误染成买方或卖方交易区");
+    }
+
+    [Fact]
+    public void ToPriceLadder_marks_only_actual_quote_rows_with_a_colored_display_zone()
+    {
+        var data = BuildSnapshot(
+            bidPrices: new[] { 99m },
+            bidVolumes: new[] { 10 },
+            askPrices: new[] { 101m },
+            askVolumes: new[] { 11 });
+
+        var ladder = data.ToPriceLadder(priceTick: 1m, levels: 3);
+
+        ladder.Rows.Single(row => row.Price == 101m).DisplayZone.Should().Be(PriceDisplayZone.AskQuote);
+        ladder.Rows.Single(row => row.Price == 99m).DisplayZone.Should().Be(PriceDisplayZone.BidQuote);
+        ladder.Rows.Where(row => row.Price is 102m or 103m or 98m or 97m or 100m)
+            .Should().OnlyContain(row => row.DisplayZone == PriceDisplayZone.Unquoted);
     }
 }

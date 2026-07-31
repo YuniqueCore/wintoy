@@ -2,6 +2,7 @@ using System.Text;
 using System.Xml.Linq;
 using FluentAssertions;
 using FuturesTrader.Application.Options;
+using FuturesTrader.Domain.Trading;
 using FuturesTrader.Domain.WindowGroups;
 using FuturesTrader.Infrastructure.Persistence.WindowGroups;
 
@@ -259,6 +260,64 @@ public class UsersXmlWindowGroupRepositoryTests : IDisposable
         File.Exists(jsonPath).Should().BeTrue("组名应写入 window-groups.json");
         var reloaded = repo.Load(opts);
         reloaded.Groups.First(g => g.Id == 7).Name.Should().Be("有色金属", "组名应持久化并在重新加载后保留");
+    }
+
+    // ── RunMode 条件字段 ─────────────────────────────────────
+
+    [Fact]
+    public void Load_ignores_CBOC_outside_the_proven_run_mode_persistence_branch()
+    {
+        var xml = SampleUsersXml.Replace(
+            "CBOnlyOpen=\"false\"",
+            "CBOnlyOpen=\"false\" CBOC=\"true\"",
+            StringComparison.Ordinal);
+        var xmlPath = WriteFile("users.xml", xml);
+
+        var standard = new UsersXmlWindowGroupRepository(new LegacyTradingRuntime(0));
+        var persisted = new UsersXmlWindowGroupRepository(new LegacyTradingRuntime(1));
+
+        standard.Load(Opts(xmlPath, "338897")).Windows[0].CbOc.Should().BeFalse();
+        persisted.Load(Opts(xmlPath, "338897")).Windows[0].CbOc.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Save_run_mode_one_writes_CBOC_but_not_the_other_run_mode_field_family()
+    {
+        var xmlPath = WriteFile("users.xml", SampleUsersXml);
+        var repo = new UsersXmlWindowGroupRepository(new LegacyTradingRuntime(1));
+        var layout = new WindowLayout
+        {
+            UserId = "338897",
+            Windows = [new InstrumentWindow { InstrumentCode = "ag2608", CbOc = true, CbBgds = true, CbZdtLock = true }],
+            Groups = WindowLayout.CreateDefaultGroups()
+        };
+
+        repo.Save(Opts(xmlPath, "338897"), layout);
+
+        var instrument = XDocument.Load(xmlPath).Descendants("Instrument").Single();
+        ((string?)instrument.Attribute("CBOC")).Should().Be("true");
+        instrument.Attribute("CBBGDS").Should().BeNull();
+        instrument.Attribute("CBZDTlock").Should().BeNull();
+    }
+
+    [Fact]
+    public void Save_standard_run_mode_omits_CBOC_and_writes_quote_lock_fields()
+    {
+        var xmlPath = WriteFile("users.xml", SampleUsersXml);
+        var repo = new UsersXmlWindowGroupRepository(new LegacyTradingRuntime(0));
+        var layout = new WindowLayout
+        {
+            UserId = "338897",
+            Windows = [new InstrumentWindow { InstrumentCode = "ag2608", CbOc = true, CbBgds = false, CbZdtLock = false }],
+            Groups = WindowLayout.CreateDefaultGroups()
+        };
+
+        repo.Save(Opts(xmlPath, "338897"), layout);
+
+        var instrument = XDocument.Load(xmlPath).Descendants("Instrument").Single();
+        instrument.Attribute("CBOC").Should().BeNull();
+        ((string?)instrument.Attribute("CBBGDS")).Should().Be("false");
+        ((string?)instrument.Attribute("CBZDTlock")).Should().Be("false");
     }
 
     // ── 辅助 ─────────────────────────────────────────────────

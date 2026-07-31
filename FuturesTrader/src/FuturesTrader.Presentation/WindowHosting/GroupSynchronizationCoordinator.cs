@@ -16,7 +16,7 @@ namespace FuturesTrader.Presentation.WindowHosting;
 /// <b>同步策略</b>：
 /// <list type="bullet">
 ///   <item>拖动：同组窗口做相同位移（delta），保持相对排列不变</item>
-///   <item>缩放：高度全组同步（对齐 0527.exe「窗口大小自动调整」），宽度各自独立（品种差异）</item>
+///   <item>缩放：高度全组同步，宽度保持各窗独立；每次尺寸变化后重排横向边界，防止重叠</item>
 /// </list>
 /// </para>
 /// <para>
@@ -89,9 +89,10 @@ public sealed class GroupSynchronizationCoordinator
         if (_isUpdating || SyncMode != WindowSyncMode.Grouped) return;
 
         var heightDelta = source.Window.ActualHeight - source.LastHeight;
-        if (Math.Abs(heightDelta) < 0.5) return;
+        var widthDelta = source.Window.ActualWidth - source.LastWidth;
+        if (Math.Abs(heightDelta) < 0.5 && Math.Abs(widthDelta) < 0.5) return;
 
-        // 缩放仅同步高度（宽度各自独立）
+        // 高度同步，宽度可不同，但之后会按实际宽度重新贴边。
         ScheduleSync(source, new Vector(0, 0), syncHeight: true);
     }
 
@@ -138,6 +139,8 @@ public sealed class GroupSynchronizationCoordinator
                 tracked.UpdatePosition();
             }
 
+            PackHorizontally(list);
+
             // 更新源窗口的上次位置基线
             source.UpdatePosition();
         }
@@ -148,6 +151,25 @@ public sealed class GroupSynchronizationCoordinator
         finally
         {
             _isUpdating = false;
+        }
+    }
+
+    /// <summary>按当前左坐标重新贴边，确保宽度变化或恢复窗口后不会重叠。</summary>
+    private void PackHorizontally(IEnumerable<TrackedWindow> trackedWindows)
+    {
+        var windows = trackedWindows
+            .Where(tracked => tracked.Window.IsLoaded)
+            .Select(tracked => tracked.Window)
+            .OrderBy(window => window.Left)
+            .ToArray();
+        for (var index = 1; index < windows.Length; index++)
+        {
+            var previous = windows[index - 1];
+            var current = windows[index];
+            var previousWidth = previous.ActualWidth > 0 ? previous.ActualWidth : previous.Width;
+            var expectedLeft = previous.Left + previousWidth + _uiOptions.CompactSpacing;
+            if (Math.Abs(current.Left - expectedLeft) > 0.5)
+                current.Left = expectedLeft;
         }
     }
 
@@ -166,12 +188,14 @@ public sealed class GroupSynchronizationCoordinator
         public int GroupId { get; } = groupId;
         public double LastLeft { get; private set; } = window.Left;
         public double LastTop { get; private set; } = window.Top;
+        public double LastWidth { get; private set; } = window.ActualWidth;
         public double LastHeight { get; private set; } = window.ActualHeight;
 
         public void UpdatePosition()
         {
             LastLeft = Window.Left;
             LastTop = Window.Top;
+            LastWidth = Window.ActualWidth;
             LastHeight = Window.ActualHeight;
         }
     }

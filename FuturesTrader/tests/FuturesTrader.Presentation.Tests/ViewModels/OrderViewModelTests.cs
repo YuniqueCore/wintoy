@@ -1,9 +1,11 @@
 using System.ComponentModel;
+using System.Reactive.Subjects;
 using System.Windows.Input;
 using FluentAssertions;
 using FuturesTrader.Application;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Domain.Configuration;
+using FuturesTrader.Domain.MarketData;
 using FuturesTrader.Domain.Trading;
 using FuturesTrader.Infrastructure.Trading;
 using FuturesTrader.Presentation.ViewModels;
@@ -31,7 +33,7 @@ public class OrderViewModelTests
     };
 
     private static OrderViewModel CreateVm(
-        MockTradingService? trading = null,
+        ITradingService? trading = null,
         LocalRiskService? risk = null,
         string instrument = "ag2608")
     {
@@ -230,8 +232,191 @@ public class OrderViewModelTests
 
         await vm.CancelCommand.ExecuteAsync();
 
-        vm.StatusMessage.Should().Contain("撤单已提交");
+        vm.StatusMessage.Should().Contain("撤单请求已提交");
         risk.CurrentCounters.SpCount.Should().Be(1, "撤单后应累加 SP 计数");
+    }
+
+    // ── 价格梯 A/B 生命周期 ─────────────────────────────────
+
+    [Fact]
+    public async Task A_mode_cancels_all_same_direction_orders_but_submits_replacement_only_after_last_tracked_cancel()
+    {
+        var trading = new ManualTradingService();
+        var vm = CreateVm(trading);
+
+        await vm.PlacePriceLadderOrderAsync(
+            Direction.Buy, 100m, 1, PriceLadderTradeSide.FirstTradeColumn,
+            OrderPlacementMode.Append, onlyOpen: true, nearbyEnabled: false, nearbyThresholdMs: 0);
+        await vm.PlacePriceLadderOrderAsync(
+            Direction.Buy, 101m, 1, PriceLadderTradeSide.FirstTradeColumn,
+            OrderPlacementMode.Append, onlyOpen: true, nearbyEnabled: false, nearbyThresholdMs: 0);
+
+        await vm.PlacePriceLadderOrderAsync(
+            Direction.Buy, 102m, 2, PriceLadderTradeSide.FirstTradeColumn,
+            OrderPlacementMode.ReplaceSameDirection, onlyOpen: true, nearbyEnabled: false, nearbyThresholdMs: 0);
+
+        trading.CancelRequests.Should().HaveCount(2, "A 模式应对全部同方向活动订单发撤单请求");
+        vm.PlacementLifecycle.Should().BeOfType<OrderPlacementLifecycle.AwaitingTrackedCancel>();
+        trading.SentOrders.Should().HaveCount(2, "撤单请求阶段不能提前提交替换单");
+
+        var replacementSubmitted = new TaskCompletionSource<OrderRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        trading.OrderSubmitted += (_, request) =>
+        {
+            if (request.Price == 102m)
+                replacementSubmitted.TrySetResult(request);
+        };
+
+        trading.PublishCanceled(trading.CancelRequests[0].OrderRef);
+        trading.SentOrders.Should().HaveCount(2, "非被跟踪撤单回报不能释放替换单");
+
+        trading.PublishCanceled(trading.CancelRequests[^1].OrderRef);
+        var replacement = await replacementSubmitted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        replacement.Direction.Should().Be(Direction.Buy);
+        replacement.Volume.Should().Be(2);
+        vm.PlacementLifecycle.Should().BeOfType<OrderPlacementLifecycle.Ready>();
+    }
+
+    [Fact]
+    public async Task B_mode_appends_same_direction_orders_without_automatic_cancellation()
+    {
+        var trading = new ManualTradingService();
+        var vm = CreateVm(trading);
+
+        await vm.PlacePriceLadderOrderAsync(
+            Direction.Sell, 100m, 1, PriceLadderTradeSide.SecondTradeColumn,
+            OrderPlacementMode.Append, onlyOpen: true, nearbyEnabled: false, nearbyThresholdMs: 0);
+        await vm.PlacePriceLadderOrderAsync(
+            Direction.Sell, 101m, 1, PriceLadderTradeSide.SecondTradeColumn,
+            OrderPlacementMode.Append, onlyOpen: true, nearbyEnabled: false, nearbyThresholdMs: 0);
+
+        trading.SentOrders.Should().HaveCount(2);
+        trading.CancelRequests.Should().BeEmpty("普通 B 开仓路径应追加而非自动撤单");
+    }
+
+    [Fact]
+    public async Task Only_open_disabled_uses_available_opposite_position_and_clamps_the_volume()
+    {
+        var trading = new ManualTradingService();
+        var vm = CreateVm(trading);
+        trading.PublishPosition(new Position
+        {
+            InstrumentId = "ag2608",
+            Direction = Direction.Sell,
+            TodayPosition = 3,
+            YdPosition = 4,
+            FrozenPosition = 0,
+            TotalPosition = 7
+        });
+
+        await vm.PlacePriceLadderOrderAsync(
+            Direction.Buy, 100m, 5, PriceLadderTradeSide.FirstTradeColumn,
+            OrderPlacementMode.Append, onlyOpen: false, nearbyEnabled: false, nearbyThresholdMs: 0);
+
+        trading.SentOrders.Should().ContainSingle();
+        trading.SentOrders[0].OffsetFlag.Should().Be(OffsetFlag.CloseToday);
+        trading.SentOrders[0].Volume.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task B_mode_close_replaces_one_tracked_close_order_when_frozen_orders_cover_the_whole_opposite_position()
+    {
+        var trading = new ManualTradingService();
+        var vm = CreateVm(trading);
+        trading.PublishPosition(new Position
+        {
+            InstrumentId = "ag2608",
+            Direction = Direction.Sell,
+            TodayPosition = 3,
+            YdPosition = 2,
+            FrozenPosition = 5,
+            TotalPosition = 5
+        });
+        trading.PublishAccepted("close-today", Direction.Buy, OffsetFlag.CloseToday, volume: 3);
+        trading.PublishAccepted("close-yesterday", Direction.Buy, OffsetFlag.CloseYesterday, volume: 2);
+
+        var replacementSubmitted = new TaskCompletionSource<OrderRequest>(TaskCreationOptions.RunContinuationsAsynchronously);
+        trading.OrderSubmitted += (_, request) => replacementSubmitted.TrySetResult(request);
+
+        await vm.PlacePriceLadderOrderAsync(
+            Direction.Buy, 101m, 1, PriceLadderTradeSide.FirstTradeColumn,
+            OrderPlacementMode.Append, onlyOpen: false, nearbyEnabled: false, nearbyThresholdMs: 0);
+
+        trading.CancelRequests.Should().ContainSingle().Which.OrderRef.Should().Be("close-today");
+        vm.PlacementLifecycle.Should().BeOfType<OrderPlacementLifecycle.AwaitingTrackedCancel>();
+        trading.SentOrders.Should().BeEmpty("容量已满时，旧 B 路径先等待一笔平仓单撤回");
+
+        trading.PublishCanceled("close-yesterday");
+        trading.SentOrders.Should().BeEmpty("非被跟踪撤单回报不能释放替换单");
+
+        trading.PublishCanceled("close-today");
+        var replacement = await replacementSubmitted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        replacement.OffsetFlag.Should().Be(OffsetFlag.CloseToday);
+        replacement.Volume.Should().Be(1);
+        vm.PlacementLifecycle.Should().BeOfType<OrderPlacementLifecycle.Ready>();
+    }
+
+    [Fact]
+    public async Task B_mode_close_aborts_deferred_replacement_when_tracked_order_fills()
+    {
+        var trading = new ManualTradingService();
+        var vm = CreateVm(trading);
+        trading.PublishPosition(new Position
+        {
+            InstrumentId = "ag2608",
+            Direction = Direction.Sell,
+            TodayPosition = 3,
+            YdPosition = 2,
+            FrozenPosition = 5,
+            TotalPosition = 5
+        });
+        trading.PublishAccepted("close-today", Direction.Buy, OffsetFlag.CloseToday, volume: 3);
+        trading.PublishAccepted("close-yesterday", Direction.Buy, OffsetFlag.CloseYesterday, volume: 2);
+
+        await vm.PlacePriceLadderOrderAsync(
+            Direction.Buy, 101m, 1, PriceLadderTradeSide.FirstTradeColumn,
+            OrderPlacementMode.Append, onlyOpen: false, nearbyEnabled: false, nearbyThresholdMs: 0);
+        trading.PublishFilled("close-today", filledVolume: 3);
+
+        vm.PlacementLifecycle.Should().BeOfType<OrderPlacementLifecycle.Ready>();
+        trading.SentOrders.Should().BeEmpty();
+        vm.StatusMessage.Should().Contain("B 模式平仓替换未提交");
+    }
+
+    [Fact]
+    public async Task B_mode_close_with_CBOC_disabled_requests_cancellation_of_same_direction_open_orders_before_appending_close()
+    {
+        var trading = new ManualTradingService();
+        var vm = CreateVm(trading);
+        trading.PublishPosition(new Position
+        {
+            InstrumentId = "ag2608",
+            Direction = Direction.Sell,
+            TodayPosition = 2,
+            TotalPosition = 2
+        });
+        trading.PublishAccepted("opening-buy", Direction.Buy, OffsetFlag.Open, volume: 1);
+
+        await vm.PlacePriceLadderOrderAsync(
+            Direction.Buy, 101m, 1, PriceLadderTradeSide.FirstTradeColumn,
+            OrderPlacementMode.Append, onlyOpen: false, nearbyEnabled: false, nearbyThresholdMs: 0,
+            bModeClosePolicy: new BModeClosePolicy(CancelSameDirectionOpenOrders: true));
+
+        trading.CancelRequests.Should().ContainSingle().Which.OrderRef.Should().Be("opening-buy");
+        trading.SentOrders.Should().ContainSingle();
+        trading.SentOrders[0].OffsetFlag.Should().Be(OffsetFlag.CloseToday);
+    }
+
+    [Fact]
+    public void Order_updates_prefer_CTP_reported_remaining_volume_over_derived_volume()
+    {
+        var trading = new ManualTradingService();
+        var vm = CreateVm(trading);
+        trading.PublishAccepted("partial", Direction.Buy, OffsetFlag.CloseToday, volume: 9);
+
+        trading.PublishPartiallyFilled("partial", volume: 9, volumeTraded: 1, volumeRemaining: 4);
+
+        vm.ActiveOrders["partial"].RemainingVolume.Should().Be(4);
     }
 
     // ── 属性变更通知 ───────────────────────────────────────
@@ -298,4 +483,119 @@ internal sealed class AlwaysAllowSessionChecker : ITradingSessionChecker
     public bool CanPlaceOrder(DateTime now) => true;
     public (bool Allowed, string? Reason) CheckOrderAllowed(DateTime now) => (true, null);
     public TimeSpan TimeToNextSession(DateTime now) => TimeSpan.Zero;
+}
+
+/// <summary>
+/// 可控交易假件：报单立即 Accepted，但撤单由测试显式发布 Canceled，
+/// 用来验证 A 模式的异步等待状态，不依赖真实时间或 CTP。
+/// </summary>
+internal sealed class ManualTradingService : ITradingService
+{
+    private readonly Subject<OrderResult> _orders = new();
+    private readonly Subject<Trade> _trades = new();
+    private readonly Subject<Position> _positions = new();
+    private readonly Subject<Instrument> _instruments = new();
+    private readonly Subject<TradingAccount> _accounts = new();
+    private readonly Subject<ConnectionState> _connections = new();
+    private int _nextOrderRef;
+
+    public List<OrderRequest> SentOrders { get; } = [];
+    public List<(string OrderRef, int FrontId, int SessionId)> CancelRequests { get; } = [];
+    public event EventHandler<OrderRequest>? OrderSubmitted;
+
+    public ConnectionState CurrentState { get; } = new ConnectionState.Connected();
+    public IObservable<OrderResult> OrderStream => _orders;
+    public IObservable<Trade> TradeStream => _trades;
+    public IObservable<Position> PositionStream => _positions;
+    public IObservable<Instrument> InstrumentStream => _instruments;
+    public IObservable<TradingAccount> AccountStream => _accounts;
+    public IObservable<ConnectionState> ConnectionStream => _connections;
+
+    public Task ConnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task DisconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task<string> SendOrderAsync(OrderRequest request, CancellationToken cancellationToken = default)
+    {
+        var orderRef = (++_nextOrderRef).ToString();
+        SentOrders.Add(request with { OrderRef = orderRef });
+        _orders.OnNext(new OrderResult
+        {
+            OrderRef = orderRef,
+            FrontId = 1,
+            SessionId = 1,
+            InstrumentId = request.InstrumentId,
+            Direction = request.Direction,
+            OffsetFlag = request.OffsetFlag,
+            Price = request.Price,
+            Volume = request.Volume,
+            Status = new OrderStatus.Accepted()
+        });
+        OrderSubmitted?.Invoke(this, SentOrders[^1]);
+        return Task.FromResult(orderRef);
+    }
+
+    public Task CancelOrderAsync(string orderRef, int frontId, int sessionId, CancellationToken cancellationToken = default)
+    {
+        CancelRequests.Add((orderRef, frontId, sessionId));
+        return Task.CompletedTask;
+    }
+
+    public Task QueryPositionAsync(string? instrumentId = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task QueryInstrumentAsync(string? instrumentId = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task QueryTradingAccountAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public void PublishCanceled(string orderRef) => _orders.OnNext(new OrderResult
+    {
+        OrderRef = orderRef,
+        InstrumentId = "ag2608",
+        Status = new OrderStatus.Canceled(0)
+    });
+
+    public void PublishAccepted(string orderRef, Direction direction, OffsetFlag offsetFlag, int volume) =>
+        _orders.OnNext(new OrderResult
+        {
+            OrderRef = orderRef,
+            FrontId = 1,
+            SessionId = 1,
+            InstrumentId = "ag2608",
+            Direction = direction,
+            OffsetFlag = offsetFlag,
+            Price = 100m,
+            Volume = volume,
+            VolumeRemaining = volume,
+            Status = new OrderStatus.Accepted()
+        });
+
+    public void PublishPartiallyFilled(string orderRef, int volume, int volumeTraded, int volumeRemaining) =>
+        _orders.OnNext(new OrderResult
+        {
+            OrderRef = orderRef,
+            InstrumentId = "ag2608",
+            Volume = volume,
+            VolumeTraded = volumeTraded,
+            VolumeRemaining = volumeRemaining,
+            Status = new OrderStatus.PartiallyFilled(volumeTraded)
+        });
+
+    public void PublishFilled(string orderRef, int filledVolume) => _orders.OnNext(new OrderResult
+    {
+        OrderRef = orderRef,
+        InstrumentId = "ag2608",
+        Volume = filledVolume,
+        VolumeTraded = filledVolume,
+        Status = new OrderStatus.Filled(filledVolume)
+    });
+
+    public void PublishPosition(Position position) => _positions.OnNext(position);
+
+    public ValueTask DisposeAsync()
+    {
+        _orders.Dispose();
+        _trades.Dispose();
+        _positions.Dispose();
+        _instruments.Dispose();
+        _accounts.Dispose();
+        _connections.Dispose();
+        return ValueTask.CompletedTask;
+    }
 }

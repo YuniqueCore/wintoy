@@ -2,38 +2,31 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 using FuturesTrader.Domain.MarketData;
+using FuturesTrader.Domain.Trading;
 
 namespace FuturesTrader.Presentation.Controls;
 
-/// <summary>
-/// <see cref="PriceLevel"/> 行模板选择器：中心行（<see cref="PriceLevel.IsLastPrice"/>）用高亮模板，
-/// 上方卖盘（AskVolume&gt;0 且非中心）用红模板，下方买盘（BidVolume&gt;0 且非中心）用绿模板。
-/// 由 XAML 的 ItemTemplateSelector 静态引用，运行时按行数据类型选模板。
-/// </summary>
+/// <summary>按行情显示状态选择行模板。显示状态不参与价格梯下单方向决策。</summary>
 public sealed class PriceLevelTemplateSelector : DataTemplateSelector
 {
     public DataTemplate? AskTemplate { get; set; }
     public DataTemplate? BidTemplate { get; set; }
+    public DataTemplate? UnquotedTemplate { get; set; }
     public DataTemplate? CenterTemplate { get; set; }
 
     public override DataTemplate? SelectTemplate(object item, DependencyObject container)
     {
-        if (item is not PriceLevel level) return AskTemplate;
+        if (item is not PriceLevel level) return UnquotedTemplate;
+        if (level.DisplayZone == PriceDisplayZone.Unquoted) return UnquotedTemplate;
         if (level.IsLastPrice) return CenterTemplate;
-        // 中心上方为卖盘（行索引 < 中心），下方为买盘；这里用 Volume 信号判断更鲁棒
-        if (level.AskVolume > 0) return AskTemplate;
-        return BidTemplate;
+        return level.DisplayZone == PriceDisplayZone.AskQuote ? AskTemplate : BidTemplate;
     }
 }
 
 /// <summary>
-/// 价差居中价格列表 UserControl（TYYWin TStringGrid PriceList 复刻）。
-/// <see cref="PriceLadder"/> DependencyProperty 绑定后渲染 2N+1 行（上方卖盘 → 中心最新价 → 下方买盘）。
-/// 5 列按 PriceListRatios=10,25,30,25,10 比例（档位/买量/价格/卖量/价差）。
-/// <see cref="MouseWheelSpeed"/> 控制滚轮加速（复刻旧软件 MouseWheelSpeed=3 习惯）。
-/// 中心行加载后自动滚动到视口中央，使最新价始终居中可见。
+/// 五列价格梯控件。列 0 是按价撤单列，列 1/3 是交易列，列 2/4 只显示。
+/// 中间无人报价行使用中性模板，但仍保留列 1/3 的点击命中面。
 /// </summary>
 public sealed partial class PriceListControl : UserControl
 {
@@ -51,7 +44,6 @@ public sealed partial class PriceListControl : UserControl
             typeof(PriceListControl),
             new PropertyMetadata(18.0));
 
-    /// <summary>滚轮加速倍数（复刻旧软件 MouseWheelSpeed=3）。</summary>
     public static readonly DependencyProperty MouseWheelSpeedProperty =
         DependencyProperty.Register(
             nameof(MouseWheelSpeed),
@@ -59,10 +51,7 @@ public sealed partial class PriceListControl : UserControl
             typeof(PriceListControl),
             new PropertyMetadata(3));
 
-    /// <summary>
-    /// 价位左键点击路由事件：点击价格梯某行时冒泡，携带该行价格 + 区域。
-    /// 对齐 0527.exe TPointWindow：左键点击价位 → 按 ValLeft 量挂单（红区挂空单/蓝区挂多单）。
-    /// </summary>
+    /// <summary>左键交易请求，宿主按 ValLeft 取数量。</summary>
     public static readonly RoutedEvent PriceSelectedEvent =
         EventManager.RegisterRoutedEvent(
             nameof(PriceSelected),
@@ -70,10 +59,7 @@ public sealed partial class PriceListControl : UserControl
             typeof(EventHandler<PriceSelectedEventArgs>),
             typeof(PriceListControl));
 
-    /// <summary>
-    /// 价位右键点击路由事件：右键点击价格梯某行时冒泡，携带该行价格 + 区域。
-    /// 对齐 0527.exe TPointWindow：右键点击价位 → 按 ValRight 量挂单（新手禁用）。
-    /// </summary>
+    /// <summary>右键交易请求，宿主按 ValRight 取数量。</summary>
     public static readonly RoutedEvent PriceRightClickedEvent =
         EventManager.RegisterRoutedEvent(
             nameof(PriceRightClicked),
@@ -81,10 +67,7 @@ public sealed partial class PriceListControl : UserControl
             typeof(EventHandler<PriceSelectedEventArgs>),
             typeof(PriceListControl));
 
-    /// <summary>
-    /// 价位挂单格点击路由事件：用户点击 PriceLevel.PendingOrderCount &gt; 0 的格子时冒泡，
-    /// 携带该行价格（用于按价位撤单）。挂单数 = 0 时不触发。
-    /// </summary>
+    /// <summary>第 0 列命中已有挂单时的按价撤单请求。</summary>
     public static readonly RoutedEvent PendingOrderCancelEvent =
         EventManager.RegisterRoutedEvent(
             nameof(PendingOrderCancel),
@@ -92,33 +75,26 @@ public sealed partial class PriceListControl : UserControl
             typeof(EventHandler<PriceSelectedEventArgs>),
             typeof(PriceListControl));
 
-    public PriceListControl()
-    {
-        InitializeComponent();
-    }
+    public PriceListControl() => InitializeComponent();
 
-    /// <summary>价位左键被点击时触发（携带该行价格 + 区域，供宿主按 ValLeft 量下单）。</summary>
     public event EventHandler<PriceSelectedEventArgs> PriceSelected
     {
         add => AddHandler(PriceSelectedEvent, value);
         remove => RemoveHandler(PriceSelectedEvent, value);
     }
 
-    /// <summary>价位右键被点击时触发（携带该行价格 + 区域，供宿主按 ValRight 量下单）。</summary>
     public event EventHandler<PriceSelectedEventArgs> PriceRightClicked
     {
         add => AddHandler(PriceRightClickedEvent, value);
         remove => RemoveHandler(PriceRightClickedEvent, value);
     }
 
-    /// <summary>挂单格被点击时触发（携带该行价格，供宿主按价位撤单）。</summary>
     public event EventHandler<PriceSelectedEventArgs> PendingOrderCancel
     {
         add => AddHandler(PendingOrderCancelEvent, value);
         remove => RemoveHandler(PendingOrderCancelEvent, value);
     }
 
-    /// <summary>价格梯数据（行情刷新时整体替换）。</summary>
     [Category("MarketData")]
     public PriceLadder? PriceLadder
     {
@@ -126,7 +102,6 @@ public sealed partial class PriceListControl : UserControl
         set => SetValue(PriceLadderProperty, value);
     }
 
-    /// <summary>单行高度（像素，对应旧软件 RowHeight=12 等）。</summary>
     [Category("Layout")]
     public double RowHeight
     {
@@ -134,7 +109,6 @@ public sealed partial class PriceListControl : UserControl
         set => SetValue(RowHeightProperty, value);
     }
 
-    /// <summary>滚轮加速倍数（每次滚动跨过 N 行，默认 3 复刻旧软件习惯）。</summary>
     [Category("Behavior")]
     public int MouseWheelSpeed
     {
@@ -142,112 +116,71 @@ public sealed partial class PriceListControl : UserControl
         set => SetValue(MouseWheelSpeedProperty, value);
     }
 
-    /// <summary>PriceLadder 变更后滚动到中心行（最新价始终居中可见）。</summary>
     private static void OnPriceLadderChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is not PriceListControl control) return;
-        control.ScrollToCenter();
+        if (d is PriceListControl control) control.ScrollToCenter();
     }
 
-    /// <summary>把中心行（最新价）滚动到视口中央。</summary>
     private void ScrollToCenter()
     {
         if (PriceLadder is null || PriceItemsControl.Items.Count == 0) return;
-        // 等 ItemsControl 渲染完再滚动（Dispatcher 后台优先级）
         Dispatcher.BeginInvoke(new Action(() =>
         {
             if (PriceLadder is null) return;
             var centerIndex = PriceLadder.CenterIndex;
             if (centerIndex < 0 || centerIndex >= PriceItemsControl.Items.Count) return;
-            var container = PriceItemsControl.ItemContainerGenerator.ContainerFromIndex(centerIndex);
-            if (container is not FrameworkElement element) return;
-            element.BringIntoView();
+            if (PriceItemsControl.ItemContainerGenerator.ContainerFromIndex(centerIndex) is FrameworkElement element)
+                element.BringIntoView();
         }), System.Windows.Threading.DispatcherPriority.Background);
     }
 
-    /// <summary>滚轮加速：每次滚动跨过 MouseWheelSpeed 行（复刻旧软件习惯）。</summary>
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         e.Handled = true;
-        var speed = Math.Max(1, MouseWheelSpeed);
-        // 向上滚（正 delta）→ 向上跨 speed 行；向下滚 → 向下跨 speed 行
-        var offset = e.Delta > 0 ? -speed : speed;
-        ScrollByRows(offset);
+        var offset = e.Delta > 0 ? -Math.Max(1, MouseWheelSpeed) : Math.Max(1, MouseWheelSpeed);
+        PriceScrollViewer.ScrollToVerticalOffset(PriceScrollViewer.VerticalOffset + offset * RowHeight);
     }
 
-    /// <summary>按行数滚动 ScrollViewer（每行高度 = RowHeight）。</summary>
-    private void ScrollByRows(int rows)
+    /// <summary>第 1/3 列鼠标按下。左右键只选择数量事件，物理交易侧随事件一起上送。</summary>
+    private void OnTradeCellMouseDown(object sender, MouseButtonEventArgs e)
     {
-        var scroll = PriceScrollViewer;
-        scroll.ScrollToVerticalOffset(scroll.VerticalOffset + rows * RowHeight);
-    }
+        if (e.Handled || sender is not FrameworkElement { DataContext: PriceLevel level, Tag: PriceLadderTradeSide side }) return;
+        var routedEvent = e.ChangedButton switch
+        {
+            MouseButton.Left => PriceSelectedEvent,
+            MouseButton.Right => PriceRightClickedEvent,
+            _ => null
+        };
+        if (routedEvent is null) return;
 
-    /// <summary>
-    /// 价格梯行左键点击：从命中元素向上遍历视觉树找到 <see cref="PriceLevel"/> DataContext，
-    /// 触发 <see cref="PriceSelectedEvent"/> 冒泡（携带价格 + 区域）。左键 = ValLeft 量挂单。
-    /// </summary>
-    private void OnPriceRowLeftClick(object sender, MouseButtonEventArgs e)
-    {
-        RaisePriceEvent(e, PriceSelectedEvent);
-    }
-
-    /// <summary>
-    /// 价格梯行右键点击：触发 <see cref="PriceRightClickedEvent"/> 冒泡。右键 = ValRight 量挂单（新手禁用）。
-    /// </summary>
-    private void OnPriceRowRightClick(object sender, MouseButtonEventArgs e)
-    {
-        RaisePriceEvent(e, PriceRightClickedEvent);
-    }
-
-    /// <summary>
-    /// 挂单格（左数第 0 列）点击：只有 PendingOrderCount &gt; 0 的格子才触发 PendingOrderCancel 路由事件。
-    /// 这里拦截左/中键的 MouseDown（不让它冒泡到 ItemsControl.MouseLeftButtonUp 误触发挂单）。
-    /// </summary>
-    private void OnPendingOrderCellMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.Handled) return;
-        if (sender is not FrameworkElement fe || fe.DataContext is not PriceLevel level) return;
-        if (level.PendingOrderCount <= 0) return;
-
-        // 拦截左键 + 中键（右键保留给系统菜单）；不让它再向上冒泡到整行的 MouseLeftButtonUp
-        // （否则会误触发 PlaceOrderFromClickAsync 挂新单）
-        e.Handled = true;
-        RaiseEvent(new PriceSelectedEventArgs(PendingOrderCancelEvent, this)
+        RaiseEvent(new PriceSelectedEventArgs(routedEvent, this)
         {
             Price = level.Price,
-            Zone = level.Zone
+            TradeSide = side
         });
+        e.Handled = true;
     }
 
-    /// <summary>从命中元素向上遍历视觉树找到 PriceLevel，触发指定路由事件。</summary>
-    private void RaisePriceEvent(MouseButtonEventArgs e, RoutedEvent evt)
+    /// <summary>第 0 列已有挂单时，左右键均可请求按价撤单。</summary>
+    private void OnPendingOrderCellMouseDown(object sender, MouseButtonEventArgs e)
     {
-        var source = e.OriginalSource as DependencyObject;
-        while (source is not null && !ReferenceEquals(source, this))
-        {
-            if (source is FrameworkElement fe && fe.DataContext is PriceLevel level)
-            {
-                RaiseEvent(new PriceSelectedEventArgs(evt, this)
-                {
-                    Price = level.Price,
-                    Zone = level.Zone
-                });
-                e.Handled = true;
-                return;
-            }
-            source = VisualTreeHelper.GetParent(source);
-        }
+        if (e.Handled
+            || e.ChangedButton is not (MouseButton.Left or MouseButton.Right)
+            || sender is not FrameworkElement { DataContext: PriceLevel level }
+            || level.PendingOrderCount <= 0)
+            return;
+
+        RaiseEvent(new PriceSelectedEventArgs(PendingOrderCancelEvent, this) { Price = level.Price });
+        e.Handled = true;
     }
 }
 
-/// <summary>价位点击事件参数：携带被点击行的价格 + 区域。</summary>
+/// <summary>价格梯命中事件参数：价格和物理交易侧，绝不携带红蓝显示区来代替方向。</summary>
 public sealed class PriceSelectedEventArgs : RoutedEventArgs
 {
     public PriceSelectedEventArgs(RoutedEvent routedEvent, object source) : base(routedEvent, source) { }
 
-    /// <summary>被点击行的价格（已按 PriceTick 对齐）。</summary>
     public decimal Price { get; init; }
 
-    /// <summary>被点击行所属区域（Ask 空单区 / Center 中心 / Bid 多单区）。</summary>
-    public PriceZone Zone { get; init; }
+    public PriceLadderTradeSide TradeSide { get; init; }
 }

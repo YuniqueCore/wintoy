@@ -1,9 +1,8 @@
 namespace FuturesTrader.Domain.MarketData;
 
 /// <summary>
-/// 价差居中价格梯的一行：某个价位上的买量、卖量、用户本地挂单数，以及是否为最新价中心行。
-/// 上方行（卖盘）<see cref="AskVolume"/> 有值，下方行（买盘）<see cref="BidVolume"/> 有值，
-/// 中心行 <see cref="IsLastPrice"/> 为 true。
+/// 价差居中价格梯的一行：某个价位上的买量、卖量、用户本地挂单数和行情显示状态。
+/// <see cref="DisplayZone"/> 只表达该行是否有买/卖报价或无人报价，不携带交易方向。
 /// <para>
 /// <see cref="PendingOrderCount"/> 是用户在当前会话挂到本档位的未成交报单数（0 表示无），
 /// 由 <c>TradingViewModel</c> 在收到 <c>OrderResult</c> 回报时聚合到对应 <see cref="PriceLevel"/>。
@@ -27,6 +26,6 @@ public sealed record PriceLevel
     /// <summary>是否为最新价中心行。</summary>
     public bool IsLastPrice { get; init; }
 
-    /// <summary>所属区域：Ask(上方空单区)/Center/Bid(下方多单区)。由 ToPriceLadder 构造时设置。</summary>
-    public PriceZone Zone { get; init; }
+    /// <summary>所属行情显示状态，由 <see cref="DepthMarketData.ToPriceLadder"/> 构造。</summary>
+    public PriceDisplayZone DisplayZone { get; init; }
 }

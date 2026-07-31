@@ -31,12 +31,15 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     private readonly ISoundService _sound;
     private readonly ITradingService _trading;
     private readonly MarketDataOptions _options;
+    private readonly LegacyTradingRuntime _legacyTradingRuntime;
     private readonly ILogger<TradingViewModel> _logger;
     private readonly CompositeDisposable _subscriptions = new();
     private decimal _priceTick = 1m;
     private bool _disposed;
+    private bool _synchronizingOrderMode;
     private InstrumentWindow _config;
     private Instrument? _instrument;
+    private PriceLadderDirectionMap _priceLadderDirectionMap = new();
     /// <summary>最近一次行情快照：用于 OrderViewModel 报单回报触发价格梯重建时复用（无需重读行情）。</summary>
     private DepthMarketData? _lastMarketData;
 
@@ -50,9 +53,10 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         ITradingService trading,
         ILocalRiskService risk,
         IOrderValidator orderValidator,
-        ILogger<OrderViewModel> orderLogger)
+        ILogger<OrderViewModel> orderLogger,
+        LegacyTradingRuntime? legacyTradingRuntime = null)
         : this(new InstrumentWindow { InstrumentCode = instrumentCode },
-              marketData, keyboard, sound, options, logger, trading, risk, orderValidator, orderLogger)
+              marketData, keyboard, sound, options, logger, trading, risk, orderValidator, orderLogger, legacyTradingRuntime)
     {
     }
 
@@ -66,7 +70,8 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         ITradingService trading,
         ILocalRiskService risk,
         IOrderValidator orderValidator,
-        ILogger<OrderViewModel> orderLogger)
+        ILogger<OrderViewModel> orderLogger,
+        LegacyTradingRuntime? legacyTradingRuntime = null)
     {
         _config = config;
         InstrumentCode = config.InstrumentCode;
@@ -75,6 +80,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         _sound = sound;
         _trading = trading;
         _options = options.Value;
+        _legacyTradingRuntime = legacyTradingRuntime ?? new LegacyTradingRuntime();
         _logger = logger;
         PriceLadderLevels = _options.PriceLadderLevels;
 
@@ -103,6 +109,12 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
 
     /// <summary>下单区 VM（买卖/开平/价格/数量 + 报单/撤单）。XAML 下单面板 DataContext={Binding Order}。</summary>
     public OrderViewModel Order { get; }
+
+    /// <summary>
+    /// 当前合约的物理交易侧到 CTP 方向映射。默认列 1=Buy、列 3=Sell；
+    /// 由合约适配层识别到旧程序的反转标志后可替换，不能从行情显示颜色推断。
+    /// </summary>
+    public PriceLadderDirectionMap PriceLadderDirectionMap => _priceLadderDirectionMap;
 
     [ObservableProperty]
     public partial PriceLadder? PriceLadder { get; private set; }
@@ -170,17 +182,26 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     /// <summary>单行高度（RowHeight，像素）。</summary>
     [ObservableProperty] public partial int RowHeight { get; set; } = 12;
 
-    /// <summary>卖一价靠左（RboA）。</summary>
+    /// <summary>旧 RBOA 单选状态：A 模式（同合约同方向替换）。</summary>
     [ObservableProperty] public partial bool RboA { get; set; }
 
-    /// <summary>买一价靠左（RboB，默认 true）。</summary>
+    /// <summary>旧 RBOB 单选状态：B 模式（普通追加，默认 true）。</summary>
     [ObservableProperty] public partial bool RboB { get; set; } = true;
 
-    /// <summary>Chg Nearby：每成交一手暂停约 1 秒挂单（推荐勾选）。</summary>
+    /// <summary>Chg Nearby：行情变化后短时间内阻止该交易侧误点。</summary>
     [ObservableProperty] public partial bool CbNearby { get; set; }
 
     /// <summary>OnlyOpen：开仓模式（与浮动栏「仓/平」联动，true=开仓）。</summary>
     [ObservableProperty] public partial bool CbOnlyOpen { get; set; }
+
+    /// <summary>旧 CBOC：B 平仓时是否保留同方向开仓挂单。</summary>
+    [ObservableProperty] public partial bool CbOc { get; set; }
+
+    /// <summary>
+    /// CBOC 的旧 XML 仅在 RunMode=1/2 的写出分支出现。RunMode=3 的 B 平仓路径仍会读取运行时控件，
+    /// 但没有已证实的持久化入口，故当前端口不把它展示为可保存配置。
+    /// </summary>
+    public bool IsCbOcConfigurationPersisted => _legacyTradingRuntime.PersistsCbOc;
 
     /// <summary>窄模式（NarrowMode）。</summary>
     [ObservableProperty] public partial bool NarrowMode { get; set; }
@@ -209,8 +230,29 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     /// <summary>价差因子（CntrbySprdFctn，默认 1）。</summary>
     [ObservableProperty] public partial int CntrbySprdFctn { get; set; } = 1;
 
-    /// <summary>挂单模式：true=A（单方向单点），false=B（单方向多点）。</summary>
-    [ObservableProperty] public partial bool IsChgOrderA { get; set; } = true;
+    /// <summary>挂单模式：由 RBOA/RBOB 单选状态派生；B 是 Users.xml 的默认值。</summary>
+    [ObservableProperty]
+    public partial OrderPlacementMode OrderPlacementMode { get; set; } = OrderPlacementMode.Append;
+
+    /// <summary>供现有 A 单选 UI 使用的派生属性。</summary>
+    public bool IsChgOrderA
+    {
+        get => OrderPlacementMode == OrderPlacementMode.ReplaceSameDirection;
+        set
+        {
+            if (value) OrderPlacementMode = OrderPlacementMode.ReplaceSameDirection;
+        }
+    }
+
+    /// <summary>供现有 B 单选 UI 使用的派生属性。</summary>
+    public bool IsChgOrderB
+    {
+        get => OrderPlacementMode == OrderPlacementMode.Append;
+        set
+        {
+            if (value) OrderPlacementMode = OrderPlacementMode.Append;
+        }
+    }
 
     /// <summary>M-OrderX：提前挂单（禁止使用）。</summary>
     [ObservableProperty] public partial bool MOrderX { get; set; }
@@ -238,10 +280,10 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         ValLeft = c.ValLeft;
         ValRight = c.ValRight;
         RowHeight = c.RowHeight;
-        RboA = c.RboA;
-        RboB = c.RboB;
+        SetOrderPlacementModeFromLegacyRadio(c.RboA, c.RboB);
         CbNearby = c.CbNearby;
         CbOnlyOpen = c.CbOnlyOpen;
+        CbOc = _legacyTradingRuntime.PersistsCbOc && c.CbOc;
         NarrowMode = c.NarrowMode;
         CbCntrbySprd = c.CbCntrbySprd;
         CbCntrbySprdEx = c.CbCntrbySprdEx;
@@ -265,6 +307,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             RboB = RboB,
             CbNearby = CbNearby,
             CbOnlyOpen = CbOnlyOpen,
+            CbOc = _legacyTradingRuntime.PersistsCbOc && CbOc,
             NarrowMode = NarrowMode,
             CbCntrbySprd = CbCntrbySprd,
             CbCntrbySprdEx = CbCntrbySprdEx,
@@ -277,18 +320,16 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         };
     }
 
-    /// <summary>价格梯左键点击：按 ValLeft 量挂单。红区(Ask)挂空单 Sell，蓝区(Bid)挂多单 Buy。</summary>
-    public async Task OnPriceLeftClickedAsync(decimal price, PriceZone zone)
+    /// <summary>价格梯左键点击：只选择 ValLeft 手数，方向由物理交易侧映射。</summary>
+    public Task OnPriceLeftClickedAsync(decimal price, PriceLadderTradeSide side)
     {
-        if (ValLeft <= 0) return;
-        await PlaceOrderFromClickAsync(price, zone, ValLeft);
+        return PlaceOrderFromClickAsync(price, side, MouseQuantityButton.Left);
     }
 
-    /// <summary>价格梯右键点击：按 ValRight 量挂单（新手禁用）。</summary>
-    public async Task OnPriceRightClickedAsync(decimal price, PriceZone zone)
+    /// <summary>价格梯右键点击：只选择 ValRight 手数，方向由物理交易侧映射。</summary>
+    public Task OnPriceRightClickedAsync(decimal price, PriceLadderTradeSide side)
     {
-        if (ValRight <= 0) return;
-        await PlaceOrderFromClickAsync(price, zone, ValRight);
+        return PlaceOrderFromClickAsync(price, side, MouseQuantityButton.Right);
     }
 
     /// <summary>
@@ -297,26 +338,40 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     public Task CancelOrdersAtPriceAsync(decimal price) => Order.CancelOrdersAtPriceAsync(price);
 
     /// <summary>
-    /// 全局撤销当前合约的所有活动报单：键盘空格触发，对齐 0527.exe 全局撤单习惯。
+    /// 撤销当前合约的所有活动报单。系统级 Space 由窗口宿主的全局撤单服务处理。
     /// </summary>
     public Task CancelAllOrdersAsync() => Order.CancelAllOrdersAsync();
 
-    /// <summary>按点击区域 + 数量下单：红区=Sell 空单，蓝区=Buy 多单，中心=按 OnlyOpen 决定。</summary>
-    private async Task PlaceOrderFromClickAsync(decimal price, PriceZone zone, int volume)
+    /// <summary>按鼠标数量键和物理交易侧下单，行情显示区不参与方向决策。</summary>
+    private async Task PlaceOrderFromClickAsync(
+        decimal price,
+        PriceLadderTradeSide side,
+        MouseQuantityButton mouseButton)
     {
         try
         {
-            // 红区(Ask/上方) → 卖出（空单）；蓝区(Bid/下方) → 买入（多单）
-            var direction = zone == PriceZone.Ask ? Direction.Sell : Direction.Buy;
-            var offset = CbOnlyOpen ? OffsetFlag.Open : OffsetFlag.Close;
+            var unsupportedReason = _legacyTradingRuntime.GetUnsupportedPriceLadderOrderReason();
+            if (unsupportedReason is not null)
+            {
+                Order.ReportPriceLadderOrderBlocked(unsupportedReason);
+                return;
+            }
 
-            Order.Direction = direction;
-            Order.OffsetFlag = offset;
-            Order.Price = price;
-            Order.Quantity = volume;
-            await Order.OrderCommand.ExecuteAsync(null);
-            _logger.LogInformation("价格点击下单：{Instrument} {Dir} {Off} {Price} × {Vol}",
-                InstrumentCode, direction, offset, price, volume);
+            var volume = mouseButton == MouseQuantityButton.Left ? ValLeft : ValRight;
+            if (volume <= 0) return;
+            var direction = _priceLadderDirectionMap.Resolve(side);
+            await Order.PlacePriceLadderOrderAsync(
+                direction,
+                price,
+                volume,
+                side,
+                OrderPlacementMode,
+                CbOnlyOpen,
+                CbNearby,
+                _options.NearbyProtectionMs,
+                _legacyTradingRuntime.ResolveBModeClosePolicy(CbOc));
+            _logger.LogInformation("价格点击下单：{Instrument} {Side} {Mouse} {Mode} {Price} × {Vol}",
+                InstrumentCode, side, mouseButton, OrderPlacementMode, price, volume);
         }
         catch (Exception ex)
         {
@@ -326,6 +381,56 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
 
     /// <summary>CbOnlyOpen 变更时通知 OpenCloseMark 刷新。</summary>
     partial void OnCbOnlyOpenChanged(bool value) => OnPropertyChanged(nameof(OpenCloseMark));
+
+    partial void OnOrderPlacementModeChanged(OrderPlacementMode value)
+    {
+        if (!_synchronizingOrderMode)
+            SynchronizeOrderMode(value);
+        OnPropertyChanged(nameof(IsChgOrderA));
+        OnPropertyChanged(nameof(IsChgOrderB));
+    }
+
+    partial void OnRboAChanged(bool value)
+    {
+        if (!_synchronizingOrderMode)
+            SynchronizeOrderMode(value ? OrderPlacementMode.ReplaceSameDirection : OrderPlacementMode.Append);
+    }
+
+    partial void OnRboBChanged(bool value)
+    {
+        if (!_synchronizingOrderMode)
+            SynchronizeOrderMode(value ? OrderPlacementMode.Append : OrderPlacementMode.ReplaceSameDirection);
+    }
+
+    /// <summary>
+    /// RBOA/RBOB 是旧版互斥 RadioButton 的持久化投影。损坏 XML 出现“双真”或“双假”时，
+    /// 规范化为 B，避免在未明确选择 A 时自动撤掉同方向订单。
+    /// </summary>
+    private void SetOrderPlacementModeFromLegacyRadio(bool rboA, bool rboB) =>
+        SynchronizeOrderMode(rboA && !rboB
+            ? OrderPlacementMode.ReplaceSameDirection
+            : OrderPlacementMode.Append);
+
+    /// <summary>从唯一的领域模式同步旧 XML 单选字段，避免两个可变布尔状态分叉。</summary>
+    private void SynchronizeOrderMode(OrderPlacementMode mode)
+    {
+        if (_synchronizingOrderMode) return;
+
+        _synchronizingOrderMode = true;
+        try
+        {
+            RboA = mode == OrderPlacementMode.ReplaceSameDirection;
+            RboB = mode == OrderPlacementMode.Append;
+            OrderPlacementMode = mode;
+        }
+        finally
+        {
+            _synchronizingOrderMode = false;
+        }
+    }
+
+    /// <summary>供合约适配层设置旧程序所支持的交易侧反转映射。</summary>
+    public void SetPriceLadderDirectionMap(PriceLadderDirectionMap map) => _priceLadderDirectionMap = map;
 
     /// <summary>订阅行情流 + 交易流（持仓/资金/合约元数据）并初始化连接状态监听。</summary>
     private void Subscribe()
@@ -462,6 +567,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         MarshalToUi(() =>
         {
             if (_disposed) return;
+            RecordRelevantMarketUpdates(_lastMarketData, data, DateTime.Now);
             _lastMarketData = data;
             PriceLadder = data.ToPriceLadder(_priceTick, PriceLadderLevels, BuildPendingByPrice());
             OpenPrice = data.OpenPrice;
@@ -486,6 +592,21 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             PriceLadder = _lastMarketData.ToPriceLadder(_priceTick, PriceLadderLevels, BuildPendingByPrice());
         });
     }
+
+    private void RecordRelevantMarketUpdates(DepthMarketData? previous, DepthMarketData current, DateTime observedAt)
+    {
+        if (previous is null || !SameDepth(previous.BidPrices, previous.BidVolumes, current.BidPrices, current.BidVolumes))
+            Order.RecordMarketUpdate(PriceLadderTradeSide.FirstTradeColumn, observedAt);
+        if (previous is null || !SameDepth(previous.AskPrices, previous.AskVolumes, current.AskPrices, current.AskVolumes))
+            Order.RecordMarketUpdate(PriceLadderTradeSide.SecondTradeColumn, observedAt);
+    }
+
+    private static bool SameDepth(
+        IReadOnlyList<decimal> leftPrices,
+        IReadOnlyList<int> leftVolumes,
+        IReadOnlyList<decimal> rightPrices,
+        IReadOnlyList<int> rightVolumes) =>
+        leftPrices.SequenceEqual(rightPrices) && leftVolumes.SequenceEqual(rightVolumes);
 
     /// <summary>
     /// 聚合当前活跃报单为「价格 → 数量」字典（按 PriceTick 对齐 key）。

@@ -5,6 +5,7 @@ using System.Xml;
 using System.Xml.Linq;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
+using FuturesTrader.Domain.Trading;
 using FuturesTrader.Domain.WindowGroups;
 
 namespace FuturesTrader.Infrastructure.Persistence.WindowGroups;
@@ -18,6 +19,7 @@ namespace FuturesTrader.Infrastructure.Persistence.WindowGroups;
 public sealed class UsersXmlWindowGroupRepository : IWindowGroupRepository
 {
     private const int BackupKeep = 3;
+    private readonly LegacyTradingRuntime _legacyTradingRuntime;
 
     /// <summary>JSON 序列化选项：缩进 + 中文可读（非 \u 转义），与 ConfigRepository 一致。</summary>
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -34,6 +36,11 @@ public sealed class UsersXmlWindowGroupRepository : IWindowGroupRepository
         IndentChars = "\t"
     };
 
+    public UsersXmlWindowGroupRepository(LegacyTradingRuntime? legacyTradingRuntime = null)
+    {
+        _legacyTradingRuntime = legacyTradingRuntime ?? new LegacyTradingRuntime();
+    }
+
     public WindowLayout Load(WindowLayoutOptions options)
     {
         if (!File.Exists(options.UsersXmlPath))
@@ -42,7 +49,7 @@ public sealed class UsersXmlWindowGroupRepository : IWindowGroupRepository
         var doc = XDocument.Load(options.UsersXmlPath);
         var user = SelectUserElement(doc, options.UserId);
         var windows = user.Element("WindowHistory")?.Elements("Instrument")
-            .Select(ParseInstrument)
+            .Select(element => ParseInstrument(element, _legacyTradingRuntime))
             .ToArray() ?? [];
         var groups = LoadGroupNames(options.GroupsJsonPath);
         return new WindowLayout { UserId = options.UserId, Windows = windows, Groups = groups };
@@ -73,7 +80,7 @@ public sealed class UsersXmlWindowGroupRepository : IWindowGroupRepository
             ?? throw new InvalidOperationException("Users.xml 无 <User> 元素");
     }
 
-    private static InstrumentWindow ParseInstrument(XElement el) => new()
+    private static InstrumentWindow ParseInstrument(XElement el, LegacyTradingRuntime legacyTradingRuntime) => new()
     {
         InstrumentCode = el.Value.Trim(),
         GroupId = (int?)el.Attribute("Group") ?? 0,
@@ -88,6 +95,7 @@ public sealed class UsersXmlWindowGroupRepository : IWindowGroupRepository
         RboB = ParseBool(el.Attribute("RBOB"), defaultValue: true),
         CbNearby = ParseBool(el.Attribute("CBNearby")),
         CbOnlyOpen = ParseBool(el.Attribute("CBOnlyOpen")),
+        CbOc = legacyTradingRuntime.PersistsCbOc && ParseBool(el.Attribute("CBOC")),
         GroupEx = (int?)el.Attribute("GroupEX") ?? 0,
         CntrbySprdId = (string?)el.Attribute("CntrbySprdID") ?? string.Empty,
         CntrbySprdPt = (int?)el.Attribute("CntrbySprdPT") ?? 0,
@@ -111,7 +119,7 @@ public sealed class UsersXmlWindowGroupRepository : IWindowGroupRepository
     /// 更新 Users.xml：仅替换目标 User 的 &lt;WindowHistory&gt; 下 &lt;Instrument&gt; 子元素，
     /// 保留该 User 的兄弟元素（title/address/brokerid/userid/appid/shouquan）与其他 &lt;User&gt;。
     /// </summary>
-    private static void UpdateUsersXml(string path, WindowLayout layout)
+    private void UpdateUsersXml(string path, WindowLayout layout)
     {
         var doc = XDocument.Load(path);
         var user = SelectUserElement(doc, layout.UserId);
@@ -126,39 +134,56 @@ public sealed class UsersXmlWindowGroupRepository : IWindowGroupRepository
             history.Elements("Instrument").Remove();
         }
         foreach (var w in layout.Windows)
-            history.Add(BuildInstrumentElement(w));
+            history.Add(BuildInstrumentElement(w, _legacyTradingRuntime));
         using var writer = XmlWriter.Create(path, XmlSettings);
         doc.Save(writer);
     }
 
-    /// <summary>构造 &lt;Instrument&gt; 元素：文本=合约码，属性名严格对齐旧软件（RBOA/CBBGDS 等）。</summary>
-    private static XElement BuildInstrumentElement(InstrumentWindow w) => new(
-        "Instrument",
-        w.InstrumentCode,
-        new XAttribute("Top", w.Top),
-        new XAttribute("Left", w.Left),
-        new XAttribute("Height", w.Height),
-        new XAttribute("Width", w.Width),
-        new XAttribute("ValLeft", w.ValLeft),
-        new XAttribute("ValRight", w.ValRight),
-        new XAttribute("RowHeight", w.RowHeight),
-        new XAttribute("RBOA", BoolStr(w.RboA)),
-        new XAttribute("RBOB", BoolStr(w.RboB)),
-        new XAttribute("CBNearby", BoolStr(w.CbNearby)),
-        new XAttribute("CBOnlyOpen", BoolStr(w.CbOnlyOpen)),
-        new XAttribute("Group", w.GroupId),
-        new XAttribute("GroupEX", w.GroupEx),
-        new XAttribute("CntrbySprdID", w.CntrbySprdId),
-        new XAttribute("CntrbySprdPT", w.CntrbySprdPt),
-        new XAttribute("CntrbySprdIDEX", w.CntrbySprdIdEx),
-        new XAttribute("CntrbySprdPTEX", w.CntrbySprdPtEx),
-        new XAttribute("CntrbySprdFctn", w.CntrbySprdFctn),
-        new XAttribute("isNarrowMode", BoolStr(w.NarrowMode)),
-        new XAttribute("CBCntrbySprd", BoolStr(w.CbCntrbySprd)),
-        new XAttribute("CBCntrbySprdEX", BoolStr(w.CbCntrbySprdEx)),
-        new XAttribute("CBCDLock", BoolStr(w.CbCdLock)),
-        new XAttribute("CBBGDS", BoolStr(w.CbBgds)),
-        new XAttribute("CBZDTlock", BoolStr(w.CbZdtLock)));
+    /// <summary>
+    /// 构造 &lt;Instrument&gt; 元素。旧 4E913C 的字段集合随 RunMode 分支变化：
+    /// RunMode=1/2 写 CBOC（以及当前端口未恢复的扩展控件），其他已证实分支写 CBBGDS/CBZDTlock。
+    /// 不在错误分支伪造属性，避免新程序把不存在的旧配置当成有效开关。
+    /// </summary>
+    private static XElement BuildInstrumentElement(InstrumentWindow w, LegacyTradingRuntime legacyTradingRuntime)
+    {
+        var attributes = new List<object>
+        {
+            new XAttribute("Top", w.Top),
+            new XAttribute("Left", w.Left),
+            new XAttribute("Height", w.Height),
+            new XAttribute("Width", w.Width),
+            new XAttribute("ValLeft", w.ValLeft),
+            new XAttribute("ValRight", w.ValRight),
+            new XAttribute("RowHeight", w.RowHeight),
+            new XAttribute("RBOA", BoolStr(w.RboA)),
+            new XAttribute("RBOB", BoolStr(w.RboB)),
+            new XAttribute("CBNearby", BoolStr(w.CbNearby)),
+            new XAttribute("CBOnlyOpen", BoolStr(w.CbOnlyOpen)),
+            new XAttribute("Group", w.GroupId),
+            new XAttribute("GroupEX", w.GroupEx),
+            new XAttribute("CntrbySprdID", w.CntrbySprdId),
+            new XAttribute("CntrbySprdPT", w.CntrbySprdPt),
+            new XAttribute("CntrbySprdIDEX", w.CntrbySprdIdEx),
+            new XAttribute("CntrbySprdPTEX", w.CntrbySprdPtEx),
+            new XAttribute("CntrbySprdFctn", w.CntrbySprdFctn),
+            new XAttribute("isNarrowMode", BoolStr(w.NarrowMode)),
+            new XAttribute("CBCntrbySprd", BoolStr(w.CbCntrbySprd)),
+            new XAttribute("CBCntrbySprdEX", BoolStr(w.CbCntrbySprdEx)),
+            new XAttribute("CBCDLock", BoolStr(w.CbCdLock))
+        };
+
+        if (legacyTradingRuntime.PersistsCbOc)
+        {
+            attributes.Add(new XAttribute("CBOC", BoolStr(w.CbOc)));
+        }
+        else if (legacyTradingRuntime.PersistsQuoteLockFields)
+        {
+            attributes.Add(new XAttribute("CBBGDS", BoolStr(w.CbBgds)));
+            attributes.Add(new XAttribute("CBZDTlock", BoolStr(w.CbZdtLock)));
+        }
+
+        return new XElement("Instrument", w.InstrumentCode, attributes);
+    }
 
     private static string BoolStr(bool v) => v ? "true" : "false";
 

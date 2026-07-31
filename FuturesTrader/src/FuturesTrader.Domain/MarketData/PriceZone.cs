@@ -1,17 +1,18 @@
 namespace FuturesTrader.Domain.MarketData;
 
 /// <summary>
-/// 价格梯区域：以最新价中心行划分，上方为空单挂单区（红），下方为多单挂单区（蓝），中心为高亮行。
-/// 对齐 0527.exe 点价窗口 PriceList 红蓝背景分区。
+/// 价格梯行的行情显示状态。它只决定报价如何显示，绝不决定下单方向。
+/// 顶部/底部有报价的行可以着色；中间没有报价文字的行保持中性显示，
+/// 但第 1/3 交易列仍可被点击下单。
 /// </summary>
-public enum PriceZone
+public enum PriceDisplayZone
 {
-    /// <summary>空单挂单区（中心上方，红色背景）——左键挂空单。</summary>
-    Ask,
+    /// <summary>卖方报价显示。</summary>
+    AskQuote,
 
-    /// <summary>中心最新价行（高亮）。</summary>
-    Center,
+    /// <summary>无人报价的中间价格行。</summary>
+    Unquoted,
 
-    /// <summary>多单挂单区（中心下方，蓝色背景）——左键挂多单。</summary>
-    Bid
+    /// <summary>买方报价显示。</summary>
+    BidQuote
 }

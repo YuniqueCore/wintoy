@@ -10,25 +10,22 @@ namespace FuturesTrader.Application;
 /// <list type="number">
 ///   <item>合约存在：<see cref="OrderRequest.InstrumentId"/> 非空。</item>
 ///   <item>交易时段：委托 <see cref="ITradingSessionChecker.CheckOrderAllowed"/>。</item>
-///   <item>仅平仓（CBOnlyOpen）：勾选时拒绝开仓方向。</item>
-///   <item>CBNearby 节流：同方向点击间隔 &lt; 阈值拒单（"Chg Nearby!"）。</item>
+///   <item>开平决策：由调用方在构造请求前根据 CBOnlyOpen 和反向持仓完成。</item>
+///   <item>CBNearby 保护：行情更新后尚未经过阈值时拒单（"Chg Nearby!"）。</item>
 ///   <item>对手价（CBMorderX）：勾选时校验对手价有效。</item>
 ///   <item>本地风控：委托 <see cref="ILocalRiskService.CheckOrder"/>。</item>
 ///   <item>价格 tick：价格为 PriceTick 整数倍。</item>
 /// </list>
 /// </para>
 /// <para>
-/// <b>线程安全</b>：<see cref="Validate"/> 与 <see cref="RecordClick"/> 设计为 UI 线程调用（点击事件），
-/// 内部用 <see cref="Interlocked"/> 保护点击时刻记录，防止 CTP 回调线程竞争。
+/// 此校验器是纯逻辑；行情更新时间由调用方在 <see cref="OrderValidationContext"/> 中传入，
+/// 因而不会把鼠标点击时刻误当成 CBNearby 的依据。
 /// </para>
 /// </summary>
 public sealed class OrderValidator : IOrderValidator
 {
     private readonly ITradingSessionChecker _sessionChecker;
     private readonly ILocalRiskService _riskService;
-    private long _lastBuyClickTicks;
-    private long _lastSellClickTicks;
-
     public OrderValidator(ITradingSessionChecker sessionChecker, ILocalRiskService riskService)
     {
         _sessionChecker = sessionChecker ?? throw new ArgumentNullException(nameof(sessionChecker));
@@ -50,24 +47,16 @@ public sealed class OrderValidator : IOrderValidator
         if (!sessionAllowed)
             return (false, sessionReason ?? "非交易时段");
 
-        // 步骤 3：仅平仓校验（CBOnlyOpen，+1144）
-        if (context.OnlyOpenEnabled && request.OffsetFlag == OffsetFlag.Open)
-            return (false, "CBOnlyOpen 已启用，仅允许平仓方向");
-
-        // 步骤 4：CBNearby 节流（同方向点击间隔 < 阈值 → "Chg Nearby!"）
-        if (context.NearbyEnabled && context.NearbyThrottleMs > 0)
+        // 步骤 3：CBNearby 保护。旧程序比较的是行情路径维护的方向时间戳，
+        // 不是上一次鼠标点击，因此这里只读取调用方传入的行情更新时间。
+        if (context.NearbyEnabled && context.NearbyThrottleMs > 0 && context.LastRelevantMarketUpdate is { } lastUpdate)
         {
-            var lastClick = GetLastClickTicks(request.Direction);
-            if (lastClick > 0)
-            {
-                var lastClickTime = new DateTime(lastClick, DateTimeKind.Local);
-                var elapsedMs = (long)(context.Now - lastClickTime).TotalMilliseconds;
-                if (elapsedMs < context.NearbyThrottleMs)
-                    return (false, "Chg Nearby!");
-            }
+            var elapsedMs = (long)(context.Now - lastUpdate).TotalMilliseconds;
+            if (elapsedMs >= 0 && elapsedMs < context.NearbyThrottleMs)
+                return (false, "Chg Nearby!");
         }
 
-        // 步骤 5：对手价模式（CBMorderX）校验
+        // 步骤 4：对手价模式（CBMorderX）校验
         if (context.UseOpponentPrice)
         {
             if (!context.OpponentPrice.HasValue || context.OpponentPrice.Value <= 0)
@@ -78,40 +67,17 @@ public sealed class OrderValidator : IOrderValidator
             return (false, "价格必须 > 0");
         }
 
-        // 步骤 6：本地风控校验（报单数/持仓数限制）
+        // 步骤 5：本地风控校验（报单数/持仓数限制）
         var (riskAllowed, riskReason) = _riskService.CheckOrder(
             request, context.CurrentOrderCount, context.CurrentPositionCount);
         if (!riskAllowed)
             return (false, riskReason ?? "本地风控拒绝");
 
-        // 步骤 7：价格 tick 校验（PriceTick=0 时跳过，兼容市价/对手价）
+        // 步骤 6：价格 tick 校验（PriceTick=0 时跳过，兼容市价/对手价）
         var effectivePrice = context.UseOpponentPrice ? context.OpponentPrice!.Value : request.Price;
         if (request.PriceTick > 0 && effectivePrice > 0 && effectivePrice % request.PriceTick != 0)
             return (false, $"价格必须是 {request.PriceTick} 的整数倍");
 
         return (true, null);
     }
-
-    /// <inheritdoc />
-    public void RecordClick(Direction direction, DateTime clickTime)
-    {
-        var ticks = clickTime.Ticks;
-        switch (direction)
-        {
-            case Direction.Buy:
-                Interlocked.Exchange(ref _lastBuyClickTicks, ticks);
-                break;
-            case Direction.Sell:
-                Interlocked.Exchange(ref _lastSellClickTicks, ticks);
-                break;
-        }
-    }
-
-    private long GetLastClickTicks(Direction direction) =>
-        direction switch
-        {
-            Direction.Buy => Interlocked.Read(ref _lastBuyClickTicks),
-            Direction.Sell => Interlocked.Read(ref _lastSellClickTicks),
-            _ => 0
-        };
 }

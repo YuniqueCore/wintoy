@@ -2,7 +2,6 @@ using System.Collections.Concurrent;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Windows;
-using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FuturesTrader.Application.Abstractions;
@@ -12,32 +11,41 @@ using Microsoft.Extensions.Logging;
 namespace FuturesTrader.Presentation.ViewModels;
 
 /// <summary>
-/// 下单区 ViewModel（TYYWin 底部报单条复刻）：买卖方向 + 开平 + 价格 + 数量 + 报单/撤单按钮。
-/// 由 <see cref="TradingViewModel"/> 持有（每合约一个实例），通过 XAML <c>DataContext={Binding Order}</c> 绑定到下单面板。
-/// <para>
-/// <b>报单流程</b>：UI 输入 → 价格/数量本地校验 → <see cref="ILocalRiskService.CheckOrder"/> 风控校验 →
-/// <see cref="ITradingService.SendOrderAsync"/> 提交 CTP → <see cref="ITradingService.OrderStream"/> 异步回报。
-/// </para>
-/// <para>
-/// <b>撤单流程</b>：选中活动报单（默认最近一笔）→ <see cref="ILocalRiskService.CheckCancel"/> 撤单计数校验 →
-/// <see cref="ITradingService.CancelOrderAsync"/> 提交 CTP → <see cref="RecordCancel"/> 累加撤单计数。
-/// </para>
-/// <para>
-/// CTP 回调在工作线程触发，<see cref="OnOrderResult"/> 内通过 <see cref="MarshalToUi"/> 切回 UI 线程刷新状态。
-/// </para>
+/// 合约级订单编排器。手工面板可以直接提交订单；价格梯点击则通过
+/// <see cref="PlacePriceLadderOrderAsync"/> 进入左右键数量、开平决策和 A/B 模式。
 /// </summary>
 public sealed partial class OrderViewModel : ObservableObject, IDisposable
 {
+    private sealed record ActiveOrder(
+        int FrontId,
+        int SessionId,
+        decimal Price,
+        Direction Direction,
+        OffsetFlag OffsetFlag,
+        int OriginalVolume,
+        int RemainingVolume,
+        long Sequence,
+        bool CancellationRequested = false);
+
     private readonly ITradingService _trading;
     private readonly ILocalRiskService _risk;
     private readonly IOrderValidator _validator;
     private readonly ILogger<OrderViewModel> _logger;
-    private readonly ConcurrentDictionary<string, (int FrontId, int SessionId, decimal Price, Direction Direction, int OriginalVolume)> _activeOrders = new();
+    private readonly ConcurrentDictionary<string, ActiveOrder> _activeOrders = new();
     private readonly CompositeDisposable _subscriptions = new();
+    private readonly SemaphoreSlim _placementGate = new(1, 1);
     private decimal _priceTick = 1m;
     private int _sessionOrderCount;
-    private int _longPosition;
-    private int _shortPosition;
+    private int _longTodayPosition;
+    private int _longYesterdayPosition;
+    private int _longFrozenPosition;
+    private int _shortTodayPosition;
+    private int _shortYesterdayPosition;
+    private int _shortFrozenPosition;
+    private DateTime? _firstTradeSideMarketUpdate;
+    private DateTime? _secondTradeSideMarketUpdate;
+    private OrderValidationContext? _deferredReplacementContext;
+    private long _nextOrderSequence;
     private bool _disposed;
 
     public OrderViewModel(
@@ -53,74 +61,33 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
         _validator = orderValidator;
         _logger = logger;
 
-        OrderCommand = new AsyncRelayCommand(SendOrderAsync, CanSendOrder);
+        OrderCommand = new AsyncRelayCommand(SendManualOrderAsync, CanSendOrder);
         CancelCommand = new AsyncRelayCommand(CancelLastOrderAsync, CanCancelOrder);
-
-        // 订阅报单回报流（CTP 在工作线程触发，回调内 MarshalToUi）
         _subscriptions.Add(_trading.OrderStream.Subscribe(OnOrderResult, OnStreamError));
-
-        // 订阅持仓回报流：聚合本合约多头/空头持仓，供风控 MaxPositionCount 校验
-        // CTP OnRspQryInvestorPosition 按 (合约,方向,投机套保) 分组推送多条，这里按方向合并
         _subscriptions.Add(
             _trading.PositionStream
-                .Where(p => string.Equals(p.InstrumentId, InstrumentCode, StringComparison.Ordinal))
+                .Where(position => string.Equals(position.InstrumentId, InstrumentCode, StringComparison.Ordinal))
                 .Subscribe(OnPositionUpdate, OnStreamError));
     }
 
-    /// <summary>
-    /// 报单状态变更事件：每次活动报单新增/移除时触发，供 <see cref="TradingViewModel"/>
-    /// 重建 <see cref="Domain.MarketData.PriceLevel.PendingOrderCount"/> 聚合。
-    /// 参数为该报单的方向 + 价格 + 新活跃状态。
-    /// </summary>
+    /// <summary>活动订单变化，供价格梯按价格重新汇总第 0 列挂单数。</summary>
     public event EventHandler<OrderActiveStateChangedEventArgs>? ActiveOrdersChanged;
 
-    /// <summary>当前活动报单的快照（线程安全的副本）：报单引用 → (方向/价格/原量）。</summary>
-    public IReadOnlyDictionary<string, (Direction Direction, decimal Price, int OriginalVolume)> ActiveOrders
-    {
-        get
-        {
-            // 返回投影（移除 FrontId/SessionId 等内部状态），调用方按 Price 聚合挂单数
-            return _activeOrders
-                .ToDictionary(
-                    kv => kv.Key,
-                    kv => (kv.Value.Direction, kv.Value.Price, kv.Value.OriginalVolume));
-        }
-    }
+    /// <summary>活动订单的线程安全快照。</summary>
+    public IReadOnlyDictionary<string, ActiveOrderInfo> ActiveOrders => _activeOrders.ToDictionary(
+        pair => pair.Key,
+        pair => new ActiveOrderInfo(
+            pair.Value.Direction,
+            pair.Value.OffsetFlag,
+            pair.Value.Price,
+            pair.Value.OriginalVolume,
+            pair.Value.RemainingVolume,
+            pair.Value.CancellationRequested));
 
-    /// <summary>
-    /// 持仓回报到达：按方向（Buy=多头 / Sell=空头）累加手数。
-    /// CTP 一次查询可能推送多条（不同 HedgeFlag），这里按方向分组累加；
-    /// 收到本合约任意一条持仓即覆盖该方向的累计值（以最新查询快照为准）。
-    /// <para>
-    /// 注意：CTP 同一查询批次内会推送 (合约,方向,HedgeFlag) 笛卡尔积的多条记录，
-    /// 简化处理：每条 Position 视为该方向的最新快照，直接覆盖。
-    /// 完整聚合需等待 bIsLast=true（Domain 层未暴露批次边界），目前按覆盖语义足够（风控只看总持仓上限）。
-    /// </para>
-    /// </summary>
-    private void OnPositionUpdate(Position position)
-    {
-        if (_disposed) return;
-        MarshalToUi(() =>
-        {
-            if (_disposed) return;
-            switch (position.Direction)
-            {
-                case Direction.Buy: _longPosition = position.TotalPosition; break;
-                case Direction.Sell: _shortPosition = position.TotalPosition; break;
-            }
-        });
-    }
-
-    /// <summary>当前合约总持仓（多+空，用于风控 MaxPositionCount 校验）。</summary>
-    private int CurrentPositionCount => _longPosition + _shortPosition;
-
-    /// <summary>合约代码（由 TradingViewModel 注入，与窗口标题一致）。</summary>
+    /// <summary>合约代码。</summary>
     public string InstrumentCode { get; }
 
-    /// <summary>
-    /// 最小变动价位（由 TradingViewModel 从合约元数据填充，默认 1）。
-    /// 用于 <see cref="CanSendOrder"/> 校验价格必须为 PriceTick 整数倍。
-    /// </summary>
+    /// <summary>最小变动价位。</summary>
     public decimal PriceTick
     {
         get => _priceTick;
@@ -149,51 +116,124 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool IsBusy { get; private set; }
 
-    /// <summary>
-    /// 报单命令（绑定下单按钮）。
-    /// 暴露为 <see cref="IAsyncRelayCommand"/> 以便代码侧 <c>ExecuteAsync</c> 调用（点价挂单场景）。
-    /// </summary>
+    /// <summary>A 模式替换单的显式生命周期。</summary>
+    [ObservableProperty]
+    public partial OrderPlacementLifecycle PlacementLifecycle { get; private set; } = new OrderPlacementLifecycle.Ready();
+
     public IAsyncRelayCommand OrderCommand { get; }
 
-    /// <summary>撤单命令（绑定撤单按钮，撤最近一笔活动报单）。</summary>
     public IAsyncRelayCommand CancelCommand { get; }
 
-    /// <summary>活动报单数（UI 反馈：是否有可撤报单）。</summary>
     public int ActiveOrderCount => _activeOrders.Count;
 
-    // 属性变更钩子：刷新命令可用性
+    /// <summary>
+    /// 由上层价格梯编排器报告已证实但尚未完整端口的旧版路径。此方法只更新可见反馈，
+    /// 不会构造、发送或撤销任何订单。
+    /// </summary>
+    public void ReportPriceLadderOrderBlocked(string reason)
+    {
+        if (_disposed) return;
+        StatusMessage = reason;
+        _logger.LogWarning("价格梯报单已阻止：{Instrument} {Reason}", InstrumentCode, reason);
+    }
+
     partial void OnDirectionChanged(Direction value) => RefreshCommands();
     partial void OnOffsetFlagChanged(OffsetFlag value) => RefreshCommands();
     partial void OnPriceChanged(decimal value) => RefreshCommands();
     partial void OnQuantityChanged(int value) => RefreshCommands();
 
-    private void RefreshCommands()
+    /// <summary>
+    /// 行情路径观察到某一物理交易侧更新时调用。该时间专供 CBNearby，绝不由鼠标点击写入。
+    /// </summary>
+    public void RecordMarketUpdate(PriceLadderTradeSide side, DateTime observedAt)
     {
-        if (_disposed) return;
-        OrderCommand.NotifyCanExecuteChanged();
-        CancelCommand.NotifyCanExecuteChanged();
-        OnPropertyChanged(nameof(ActiveOrderCount));
+        switch (side)
+        {
+            case PriceLadderTradeSide.FirstTradeColumn:
+                _firstTradeSideMarketUpdate = observedAt;
+                break;
+            case PriceLadderTradeSide.SecondTradeColumn:
+                _secondTradeSideMarketUpdate = observedAt;
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(side), side, "不是可交易的价格梯侧");
+        }
     }
 
-    /// <summary>报单按钮可用：非忙碌 + 数量&gt;0 + 价格&gt;0 + 非已释放。</summary>
-    private bool CanSendOrder() => !IsBusy && !_disposed && Quantity > 0 && Price > 0;
-
-    /// <summary>撤单按钮可用：非忙碌 + 有活动报单 + 非已释放。</summary>
-    private bool CanCancelOrder() => !IsBusy && !_disposed && !_activeOrders.IsEmpty;
-
     /// <summary>
-    /// 提交报单：本地校验 → 风控校验 → CTP 提交。
-    /// 异常不抛出，统一写入 <see cref="StatusMessage"/> 反馈 UI。
-    /// <para>
-    /// 提交成功后在 <see cref="_activeOrders"/> 写入占位条目（OrderRef 占位 → price/direction），
-    /// 等到 CTP <c>OnRtnOrder</c> Accepted 时回填 FrontId/SessionId 真正可用于撤单。
-    /// </para>
+    /// 从价格梯提交订单。方向由物理交易侧的上层映射决定，左右键只在上层换算为数量。
     /// </summary>
-    private async Task SendOrderAsync()
+    public async Task PlacePriceLadderOrderAsync(
+        Direction direction,
+        decimal price,
+        int requestedQuantity,
+        PriceLadderTradeSide side,
+        OrderPlacementMode placementMode,
+        bool onlyOpen,
+        bool nearbyEnabled,
+        int nearbyThresholdMs,
+        BModeClosePolicy bModeClosePolicy = default)
+    {
+        if (_disposed || requestedQuantity <= 0) return;
+
+        await _placementGate.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            if (PlacementLifecycle is not OrderPlacementLifecycle.Ready)
+            {
+                StatusMessage = "正在等待上一笔 A 模式替换撤单回报";
+                return;
+            }
+
+            var resolution = CloseOrderResolver.Resolve(onlyOpen, requestedQuantity, GetOppositePosition(direction));
+            if (resolution.Volume <= 0)
+            {
+                StatusMessage = "没有可用的反向持仓可平";
+                return;
+            }
+
+            Direction = direction;
+            OffsetFlag = resolution.OffsetFlag;
+            Price = price;
+            Quantity = resolution.Volume;
+
+            var request = new OrderRequest
+            {
+                InstrumentId = InstrumentCode,
+                Direction = direction,
+                OffsetFlag = resolution.OffsetFlag,
+                Price = price,
+                Volume = resolution.Volume,
+                PriceTick = _priceTick
+            };
+            var context = new OrderValidationContext
+            {
+                Now = DateTime.Now,
+                CurrentOrderCount = _sessionOrderCount,
+                CurrentPositionCount = CurrentPositionCount,
+                NearbyEnabled = nearbyEnabled,
+                NearbyThrottleMs = nearbyThresholdMs,
+                LastRelevantMarketUpdate = GetLastMarketUpdate(side)
+            };
+
+            if (placementMode == OrderPlacementMode.Append)
+            {
+                await AppendOrderAsync(request, context, onlyOpen, bModeClosePolicy).ConfigureAwait(true);
+                return;
+            }
+
+            await ReplaceSameDirectionAsync(request, context).ConfigureAwait(true);
+        }
+        finally
+        {
+            _placementGate.Release();
+        }
+    }
+
+    /// <summary>手工面板报单，不自动套用价格梯 A/B 或 CBNearby 策略。</summary>
+    private async Task SendManualOrderAsync()
     {
         if (_disposed) return;
-
-        // 构造报单请求值对象
         var request = new OrderRequest
         {
             InstrumentId = InstrumentCode,
@@ -203,52 +243,149 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
             Volume = Quantity,
             PriceTick = _priceTick
         };
-
-        // 7 步校验链（对齐 0527.exe sub_4C036C）：合约存在 → 交易时段 → 仅平仓 →
-        // CBNearby 节流 → 对手价 → 本地风控 → 价格 tick。任一失败即拒绝，不提交 CTP。
-        // 上下文当前仅填充会话报单数与持仓数；OnlyOpen/CBNearby/对手价开关待 UI 接入后扩展。
         var context = new OrderValidationContext
         {
             Now = DateTime.Now,
             CurrentOrderCount = _sessionOrderCount,
             CurrentPositionCount = CurrentPositionCount
         };
+        await SubmitOrderAsync(request, context).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// A 模式：撤同合约同方向的所有活跃订单，等待序列中最后一笔的 Canceled 回报后提交替换单。
+    /// 方向相反的订单不参与，因此多头和空头可同时存在。
+    /// </summary>
+    private async Task ReplaceSameDirectionAsync(OrderRequest request, OrderValidationContext context)
+    {
+        var matchingOrders = _activeOrders
+            .Where(pair => pair.Value.Direction == request.Direction)
+            .OrderBy(pair => pair.Value.Sequence)
+            .ToArray();
+        if (matchingOrders.Length == 0)
+        {
+            await SubmitOrderAsync(request, context).ConfigureAwait(true);
+            return;
+        }
+
+        var trackedOrderRef = matchingOrders[^1].Key;
+        PlacementLifecycle = new OrderPlacementLifecycle.AwaitingTrackedCancel(
+            request, trackedOrderRef, DeferredReplacementCause.AModeSameDirection);
+        _deferredReplacementContext = context;
+
+        foreach (var (orderRef, order) in matchingOrders)
+        {
+            if (await RequestCancelAsync(orderRef, order, suppressStatusOnSuccess: true).ConfigureAwait(true))
+                continue;
+
+            PlacementLifecycle = new OrderPlacementLifecycle.Ready();
+            _deferredReplacementContext = null;
+            StatusMessage = "A 模式替换未提交：存在无法发起撤单的同方向挂单";
+            return;
+        }
+
+        StatusMessage = "A 模式：等待被跟踪撤单回报";
+    }
+
+    /// <summary>
+    /// B 模式：普通开仓直接追加。平仓时先应用 RunMode/CBOC 的已证实开仓撤单分支，
+    /// 再在平今/平昨挂单总量恰好覆盖反向持仓时，仅替换一笔活动平仓单。
+    /// </summary>
+    private async Task AppendOrderAsync(
+        OrderRequest request,
+        OrderValidationContext context,
+        bool onlyOpen,
+        BModeClosePolicy bModeClosePolicy)
+    {
+        if (onlyOpen || request.OffsetFlag == OffsetFlag.Open)
+        {
+            await SubmitOrderAsync(request, context).ConfigureAwait(true);
+            return;
+        }
+
+        if (bModeClosePolicy.CancelSameDirectionOpenOrders)
+        {
+            var openingOrders = _activeOrders
+                .Where(pair => pair.Value.Direction == request.Direction
+                    && pair.Value.OffsetFlag == OffsetFlag.Open)
+                .OrderBy(pair => pair.Value.Sequence)
+                .ToArray();
+            foreach (var (orderRef, order) in openingOrders)
+                await RequestCancelAsync(orderRef, order, suppressStatusOnSuccess: true).ConfigureAwait(true);
+        }
+
+        var plan = BModeCloseReplacementPlanner.TryPlan(
+            onlyOpen,
+            request,
+            GetOppositePosition(request.Direction),
+            _activeOrders.Select(pair => new BModeActiveOrder(
+                pair.Key,
+                pair.Value.Direction,
+                pair.Value.OffsetFlag,
+                pair.Value.RemainingVolume,
+                pair.Value.Sequence,
+                pair.Value.CancellationRequested)));
+        if (plan is null || !_activeOrders.TryGetValue(plan.TrackedOrderRef, out var trackedOrder))
+        {
+            await SubmitOrderAsync(request, context).ConfigureAwait(true);
+            return;
+        }
+
+        PlacementLifecycle = new OrderPlacementLifecycle.AwaitingTrackedCancel(
+            plan.PendingOrder, plan.TrackedOrderRef, DeferredReplacementCause.BModeCloseCapacity);
+        _deferredReplacementContext = context;
+        if (await RequestCancelAsync(plan.TrackedOrderRef, trackedOrder, suppressStatusOnSuccess: true).ConfigureAwait(true))
+        {
+            StatusMessage = "B 模式平仓：等待容量替换撤单回报";
+            return;
+        }
+
+        PlacementLifecycle = new OrderPlacementLifecycle.Ready();
+        _deferredReplacementContext = null;
+        StatusMessage = "B 模式平仓替换未提交：无法发起目标撤单";
+    }
+
+    private async Task<bool> SubmitOrderAsync(OrderRequest request, OrderValidationContext context)
+    {
         var (allowed, reason) = _validator.Validate(request, context);
         if (!allowed)
         {
             StatusMessage = reason ?? "校验拒绝";
-            _logger.LogWarning("报单被校验链拒绝：{Reason}（{Instrument} {Dir} {Offset} {Vol}@{Price}）",
-                reason, InstrumentCode, Direction, OffsetFlag, Quantity, Price);
-            return;
+            _logger.LogWarning(
+                "报单被校验链拒绝：{Reason}（{Instrument} {Dir} {Offset} {Vol}@{Price}）",
+                reason, InstrumentCode, request.Direction, request.OffsetFlag, request.Volume, request.Price);
+            return false;
         }
 
-        // 校验通过，记录点击时刻（CBNearby 节流用，对齐 sub_4C036C +1140）
-        _validator.RecordClick(Direction, DateTime.Now);
-
-        // 提交 CTP（或 Mock）
         try
         {
             IsBusy = true;
             StatusMessage = "报单提交中…";
             var orderRef = await _trading.SendOrderAsync(request).ConfigureAwait(true);
             Interlocked.Increment(ref _sessionOrderCount);
-            // 登记占位条目（FrontId/SessionId 待 CTP Accepted 回报回填），让价格梯立刻显示挂单数。
-            // 用 TryAdd 而非索引赋值：避免覆盖 Mock 同步推送的 Accepted（同步场景下 OnOrderResult
-            // 已在 await 返回前完成三元组回填）；真实 CTP 异步场景下则正常写入占位。
-            var placeholder = (FrontId: 0, SessionId: 0, Price: Price, Direction: Direction, OriginalVolume: Quantity);
-            var added = _activeOrders.TryAdd(orderRef, placeholder);
-            if (added)
-            {
-                ActiveOrdersChanged?.Invoke(this, new OrderActiveStateChangedEventArgs(Direction, Price, isActive: true));
-            }
+            var active = new ActiveOrder(
+                FrontId: 0,
+                SessionId: 0,
+                Price: request.Price,
+                Direction: request.Direction,
+                OffsetFlag: request.OffsetFlag,
+                OriginalVolume: request.Volume,
+                RemainingVolume: request.Volume,
+                Sequence: Interlocked.Increment(ref _nextOrderSequence));
+            if (_activeOrders.TryAdd(orderRef, active))
+                NotifyActiveOrderChanged(active, isActive: true);
+
             StatusMessage = $"报单已提交：{orderRef}";
-            _logger.LogInformation("报单提交：{Instrument} {Dir} {Offset} {Vol}@{Price} Ref={Ref}",
-                InstrumentCode, Direction, OffsetFlag, Quantity, Price, orderRef);
+            _logger.LogInformation(
+                "报单提交：{Instrument} {Dir} {Offset} {Vol}@{Price} Ref={Ref}",
+                InstrumentCode, request.Direction, request.OffsetFlag, request.Volume, request.Price, orderRef);
+            return true;
         }
         catch (Exception ex)
         {
             StatusMessage = $"报单失败：{ex.Message}";
             _logger.LogError(ex, "报单提交失败 {Instrument}", InstrumentCode);
+            return false;
         }
         finally
         {
@@ -257,124 +394,96 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>
-    /// 撤销最近一笔活动报单：撤单风控校验 → CTP 撤单 → 累加撤单计数。
-    /// 活动报单按插入顺序取最后一个（LIFO，复刻 0527.exe 撤最新报单的习惯）。
-    /// </summary>
     private async Task CancelLastOrderAsync()
     {
         if (_disposed || _activeOrders.IsEmpty) return;
-
-        // 取最近一笔活动报单（ConcurrentDictionary 无序，用快照取最后入列的）
-        var snapshot = _activeOrders.ToArray();
-        if (snapshot.Length == 0) return;
-        var (orderRef, info) = snapshot[^1];
-        var (frontId, sessionId, _, _, _) = info;
-        await CancelOrderAsync(orderRef, frontId, sessionId);
+        var latest = _activeOrders.OrderBy(pair => pair.Value.Sequence).LastOrDefault();
+        if (string.IsNullOrEmpty(latest.Key)) return;
+        await RequestCancelAsync(latest.Key, latest.Value).ConfigureAwait(true);
     }
 
-    /// <summary>
-    /// 全局撤单：撤销当前合约的所有活动报单（键盘空格触发，对齐 0527.exe 全局撤单习惯）。
-    /// 逐笔提交 CTP CancelOrderAsync，单笔失败不影响后续。
-    /// </summary>
+    /// <summary>撤当前合约的所有活动订单，最终状态仍以订单回报为准。</summary>
     public async Task CancelAllOrdersAsync()
     {
         if (_disposed || _activeOrders.IsEmpty) return;
         var snapshot = _activeOrders.ToArray();
-        if (snapshot.Length == 0) return;
-        var cancelled = 0;
+        var requested = 0;
         var failed = 0;
-        foreach (var (orderRef, info) in snapshot)
+        foreach (var (orderRef, order) in snapshot)
         {
-            try
-            {
-                await CancelOrderAsync(orderRef, info.FrontId, info.SessionId, suppressStatusOnSuccess: true);
-                cancelled++;
-            }
-            catch (Exception ex)
-            {
+            if (await RequestCancelAsync(orderRef, order, suppressStatusOnSuccess: true).ConfigureAwait(true))
+                requested++;
+            else
                 failed++;
-                _logger.LogWarning(ex, "全撤单失败 Ref={Ref}", orderRef);
-            }
         }
+
         StatusMessage = failed == 0
-            ? $"全撤单已提交：{cancelled} 笔"
-            : $"全撤单：成功 {cancelled} 笔 / 失败 {failed} 笔";
+            ? $"撤单请求已提交：{requested} 笔"
+            : $"撤单请求：已提交 {requested} 笔，未提交 {failed} 笔";
     }
 
-    /// <summary>
-    /// 撤销指定价位的所有活动报单：用户点击价格梯第 0 列（挂单数 >0）时调用。
-    /// 对齐 0527.exe TPointWindow：点击挂单列 → 撤销该价位的所有挂单。
-    /// </summary>
+    /// <summary>按合约和价格容差撤当前价位的所有活动订单。</summary>
     public async Task CancelOrdersAtPriceAsync(decimal price)
     {
         if (_disposed || _activeOrders.IsEmpty) return;
-        var snapshot = _activeOrders.ToArray();
-        if (snapshot.Length == 0) return;
-
-        // 用 PriceTick 对齐容差查找同价位报单（避免浮点漂移）
         var tolerance = _priceTick / 2m;
-        var targets = snapshot
-            .Where(kv => Math.Abs(kv.Value.Price - price) < tolerance)
-            .ToList();
-        if (targets.Count == 0) return;
+        var targets = _activeOrders
+            .Where(pair => Math.Abs(pair.Value.Price - price) < tolerance)
+            .ToArray();
+        if (targets.Length == 0) return;
 
-        var cancelled = 0;
+        var requested = 0;
         var failed = 0;
-        foreach (var (orderRef, info) in targets)
+        foreach (var (orderRef, order) in targets)
         {
-            try
-            {
-                await CancelOrderAsync(orderRef, info.FrontId, info.SessionId, suppressStatusOnSuccess: true);
-                cancelled++;
-            }
-            catch (Exception ex)
-            {
+            if (await RequestCancelAsync(orderRef, order, suppressStatusOnSuccess: true).ConfigureAwait(true))
+                requested++;
+            else
                 failed++;
-                _logger.LogWarning(ex, "按价位撤单失败 Price={Price} Ref={Ref}", price, orderRef);
-            }
         }
+
         StatusMessage = failed == 0
-            ? $"已撤单 {cancelled} 笔（@ {price}）"
-            : $"按价位撤单：成功 {cancelled} / 失败 {failed}";
+            ? $"撤单请求已提交：{requested} 笔（@ {price}）"
+            : $"按价撤单：已提交 {requested} 笔，未提交 {failed} 笔";
     }
 
-    /// <summary>
-    /// 撤销单笔报单的共享实现：风控校验 → CTP 撤单 → 累加撤单计数。
-    /// <paramref name="suppressStatusOnSuccess"/> 为 true 时不立即更新 StatusMessage，
-    /// 由批量调用方（CancelAll/CancelAtPrice）在循环结束后统一汇报。
-    /// </summary>
-    private async Task CancelOrderAsync(string orderRef, int frontId, int sessionId, bool suppressStatusOnSuccess = false)
+    private async Task<bool> RequestCancelAsync(
+        string orderRef,
+        ActiveOrder order,
+        bool suppressStatusOnSuccess = false)
     {
-        if (frontId == 0 || sessionId == 0)
+        if (order.CancellationRequested) return true;
+        if (order.FrontId == 0 || order.SessionId == 0)
         {
-            // 报单尚未被交易所接受（Pending），不能撤单：CTP 要求 FrontID+SessionID+OrderRef 三元组定位
-            _logger.LogDebug("跳过早撤单（报单未确认）：Ref={Ref}", orderRef);
-            return;
+            _logger.LogDebug("跳过早撤单（报单尚未确认）：Ref={Ref}", orderRef);
+            return false;
         }
 
-        // 撤单风控校验（用服务内部计数器）
         var (allowed, reason) = _risk.CheckCancel(InstrumentCode, _risk.CurrentCounters);
         if (!allowed)
         {
             StatusMessage = reason ?? "本地风控拒绝撤单";
             _logger.LogWarning("撤单被本地风控拒绝：{Reason}（Ref={Ref}）", reason, orderRef);
-            return;
+            return false;
         }
 
         try
         {
-            await _trading.CancelOrderAsync(orderRef, frontId, sessionId).ConfigureAwait(true);
+            _activeOrders.TryUpdate(orderRef, order with { CancellationRequested = true }, order);
+            await _trading.CancelOrderAsync(orderRef, order.FrontId, order.SessionId).ConfigureAwait(true);
             _risk.RecordCancel(InstrumentCode);
             if (!suppressStatusOnSuccess)
-                StatusMessage = $"撤单已提交：{orderRef}";
-            _logger.LogInformation("撤单提交：Ref={Ref} Front={Front} Session={Session}", orderRef, frontId, sessionId);
+                StatusMessage = $"撤单请求已提交：{orderRef}";
+            _logger.LogInformation("撤单请求已提交：Ref={Ref} Front={Front} Session={Session}",
+                orderRef, order.FrontId, order.SessionId);
+            return true;
         }
         catch (Exception ex)
         {
-            StatusMessage = $"撤单失败：{ex.Message}";
-            _logger.LogError(ex, "撤单失败 Ref={Ref}", orderRef);
-            throw;
+            _activeOrders.TryUpdate(orderRef, order, order with { CancellationRequested = true });
+            StatusMessage = $"撤单请求失败：{ex.Message}";
+            _logger.LogError(ex, "撤单请求失败 Ref={Ref}", orderRef);
+            return false;
         }
         finally
         {
@@ -382,86 +491,207 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>报单回报到达：按状态机更新活动报单表与 UI 反馈。</summary>
     private void OnOrderResult(OrderResult result)
     {
         if (_disposed) return;
-        // 过滤非本合约回报（同会话多合约场景）
-        if (!string.IsNullOrEmpty(result.InstrumentId) &&
-            !string.Equals(result.InstrumentId, InstrumentCode, StringComparison.Ordinal))
+        if (!string.IsNullOrEmpty(result.InstrumentId)
+            && !string.Equals(result.InstrumentId, InstrumentCode, StringComparison.Ordinal))
             return;
 
+        MarshalToUi(() => ApplyOrderResult(result));
+    }
+
+    private void ApplyOrderResult(OrderResult result)
+    {
+        if (_disposed) return;
+        var trackedReplacement = PlacementLifecycle as OrderPlacementLifecycle.AwaitingTrackedCancel;
+
+        switch (result.Status)
+        {
+            case OrderStatus.Accepted:
+                UpsertAcceptedOrder(result);
+                StatusMessage = $"报单已接受：{result.OrderRef}";
+                break;
+            case OrderStatus.PartiallyFilled partial:
+                UpdateActiveOrderRemainingVolume(result);
+                StatusMessage = $"部分成交：{result.OrderRef}（{partial.FilledVolume}/{result.Volume}手）";
+                break;
+            case OrderStatus.Filled filled:
+                RemoveActiveOrder(result.OrderRef);
+                StatusMessage = $"全部成交：{result.OrderRef}（{filled.FilledVolume}手）";
+                AbortTrackedReplacementIfNeeded(trackedReplacement, result.OrderRef, "被跟踪订单已成交");
+                break;
+            case OrderStatus.Canceling:
+                StatusMessage = $"撤单中：{result.OrderRef}";
+                break;
+            case OrderStatus.Canceled canceled:
+                RemoveActiveOrder(result.OrderRef);
+                StatusMessage = $"已撤单：{result.OrderRef}（成交{canceled.FilledVolume}手）";
+                if (trackedReplacement?.TrackedOrderRef == result.OrderRef)
+                    _ = SubmitDeferredReplacementAsync(trackedReplacement);
+                break;
+            case OrderStatus.Rejected rejected:
+                RemoveActiveOrder(result.OrderRef);
+                StatusMessage = $"报单被拒：{rejected.Reason}";
+                AbortTrackedReplacementIfNeeded(trackedReplacement, result.OrderRef, "被跟踪订单被拒");
+                break;
+            default:
+                StatusMessage = $"报单状态：{result.Status}（{result.OrderRef}）";
+                break;
+        }
+        RefreshCommands();
+    }
+
+    private async Task SubmitDeferredReplacementAsync(OrderPlacementLifecycle.AwaitingTrackedCancel replacement)
+    {
+        await _placementGate.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            if (!Equals(PlacementLifecycle, replacement)) return;
+            PlacementLifecycle = new OrderPlacementLifecycle.Ready();
+            var context = _deferredReplacementContext ?? new OrderValidationContext
+            {
+                Now = DateTime.Now,
+                CurrentOrderCount = _sessionOrderCount,
+                CurrentPositionCount = CurrentPositionCount
+            };
+            _deferredReplacementContext = null;
+            await SubmitOrderAsync(replacement.PendingOrder, context with
+            {
+                Now = DateTime.Now,
+                CurrentOrderCount = _sessionOrderCount,
+                CurrentPositionCount = CurrentPositionCount
+            }).ConfigureAwait(true);
+        }
+        finally
+        {
+            _placementGate.Release();
+        }
+    }
+
+    private void AbortTrackedReplacementIfNeeded(
+        OrderPlacementLifecycle.AwaitingTrackedCancel? replacement,
+        string orderRef,
+        string reason)
+    {
+        if (replacement?.TrackedOrderRef != orderRef) return;
+        PlacementLifecycle = new OrderPlacementLifecycle.Ready();
+        _deferredReplacementContext = null;
+        var prefix = replacement.Cause == DeferredReplacementCause.AModeSameDirection
+            ? "A 模式替换"
+            : "B 模式平仓替换";
+        StatusMessage = $"{prefix}未提交：{reason}";
+    }
+
+    private void UpsertAcceptedOrder(OrderResult result)
+    {
+        if (_activeOrders.TryGetValue(result.OrderRef, out var existing))
+        {
+            _activeOrders[result.OrderRef] = existing with
+            {
+                FrontId = result.FrontId,
+                SessionId = result.SessionId,
+                RemainingVolume = ResolveRemainingVolume(result, existing.RemainingVolume)
+            };
+            return;
+        }
+
+        var active = new ActiveOrder(
+            result.FrontId,
+            result.SessionId,
+            result.Price,
+            result.Direction,
+            result.OffsetFlag,
+            result.Volume,
+            ResolveRemainingVolume(result, result.Volume),
+            Interlocked.Increment(ref _nextOrderSequence));
+        _activeOrders[result.OrderRef] = active;
+        NotifyActiveOrderChanged(active, isActive: true);
+    }
+
+    private void RemoveActiveOrder(string orderRef)
+    {
+        if (_activeOrders.TryRemove(orderRef, out var removed))
+            NotifyActiveOrderChanged(removed, isActive: false);
+    }
+
+    private void UpdateActiveOrderRemainingVolume(OrderResult result)
+    {
+        if (!_activeOrders.TryGetValue(result.OrderRef, out var existing)) return;
+        _activeOrders.TryUpdate(
+            result.OrderRef,
+            existing with { RemainingVolume = ResolveRemainingVolume(result, existing.RemainingVolume) },
+            existing);
+    }
+
+    private static int ResolveRemainingVolume(OrderResult result, int fallbackVolume)
+    {
+        // CTP OnRtnOrder 的 VolumeTotal 是权威剩余量。测试假件和部分旧回报可能未填它（默认 0），
+        // 因而仅在其有值时优先使用；若已成交量存在则仍可由原始量可靠推导。
+        if (result.VolumeRemaining > 0)
+            return result.VolumeRemaining;
+        if (result.Volume > 0 && result.VolumeTraded > 0)
+            return Math.Max(0, result.Volume - result.VolumeTraded);
+        return Math.Max(0, fallbackVolume);
+    }
+
+    private void NotifyActiveOrderChanged(ActiveOrder order, bool isActive) =>
+        ActiveOrdersChanged?.Invoke(this, new OrderActiveStateChangedEventArgs(
+            order.Direction, order.OffsetFlag, order.Price, isActive));
+
+    private void OnPositionUpdate(Position position)
+    {
+        if (_disposed) return;
         MarshalToUi(() =>
         {
             if (_disposed) return;
-            switch (result.Status)
+            switch (position.Direction)
             {
-                case OrderStatus.Accepted:
-                    // 占位条目已存在（SendOrderAsync 写入）→ 合并 FrontId/SessionId；否则新增
-                    if (_activeOrders.TryGetValue(result.OrderRef, out var existing))
-                    {
-                        _activeOrders[result.OrderRef] = (
-                            FrontId: result.FrontId,
-                            SessionId: result.SessionId,
-                            Price: existing.Price,
-                            Direction: existing.Direction,
-                            OriginalVolume: existing.OriginalVolume);
-                    }
-                    else
-                    {
-                        // 重启场景：报单已 Accepted 但 VM 是新实例，构造占位条目
-                        _activeOrders[result.OrderRef] = (
-                            FrontId: result.FrontId,
-                            SessionId: result.SessionId,
-                            Price: result.Price,
-                            Direction: result.Direction,
-                            OriginalVolume: result.Volume);
-                        ActiveOrdersChanged?.Invoke(this, new OrderActiveStateChangedEventArgs(
-                            result.Direction, result.Price, isActive: true));
-                    }
-                    StatusMessage = $"报单已接受：{result.OrderRef}";
+                case Direction.Buy:
+                    _longTodayPosition = position.TodayPosition;
+                    _longYesterdayPosition = position.YdPosition;
+                    _longFrozenPosition = position.FrozenPosition;
                     break;
-                case OrderStatus.PartiallyFilled p:
-                    StatusMessage = $"部分成交：{result.OrderRef}（{p.FilledVolume}/{result.Volume}手）";
-                    break;
-                case OrderStatus.Filled f:
-                    if (_activeOrders.TryRemove(result.OrderRef, out var filled))
-                    {
-                        ActiveOrdersChanged?.Invoke(this, new OrderActiveStateChangedEventArgs(
-                            filled.Direction, filled.Price, isActive: false));
-                    }
-                    StatusMessage = $"全部成交：{result.OrderRef}（{f.FilledVolume}手）";
-                    break;
-                case OrderStatus.Canceling:
-                    StatusMessage = $"撤单中：{result.OrderRef}";
-                    break;
-                case OrderStatus.Canceled c:
-                    if (_activeOrders.TryRemove(result.OrderRef, out var cancelled))
-                    {
-                        ActiveOrdersChanged?.Invoke(this, new OrderActiveStateChangedEventArgs(
-                            cancelled.Direction, cancelled.Price, isActive: false));
-                    }
-                    StatusMessage = $"已撤单：{result.OrderRef}（成交{c.FilledVolume}手）";
-                    break;
-                case OrderStatus.Rejected r:
-                    if (_activeOrders.TryRemove(result.OrderRef, out var rejected))
-                    {
-                        ActiveOrdersChanged?.Invoke(this, new OrderActiveStateChangedEventArgs(
-                            rejected.Direction, rejected.Price, isActive: false));
-                    }
-                    StatusMessage = $"报单被拒：{r.Reason}";
-                    break;
-                default:
-                    StatusMessage = $"报单状态：{result.Status}（{result.OrderRef}）";
+                case Direction.Sell:
+                    _shortTodayPosition = position.TodayPosition;
+                    _shortYesterdayPosition = position.YdPosition;
+                    _shortFrozenPosition = position.FrozenPosition;
                     break;
             }
-            RefreshCommands();
         });
+    }
+
+    private OppositePosition GetOppositePosition(Direction direction) => direction switch
+    {
+        Direction.Buy => new OppositePosition(_shortTodayPosition, _shortYesterdayPosition, _shortFrozenPosition),
+        Direction.Sell => new OppositePosition(_longTodayPosition, _longYesterdayPosition, _longFrozenPosition),
+        _ => throw new ArgumentOutOfRangeException(nameof(direction), direction, "未知买卖方向")
+    };
+
+    private DateTime? GetLastMarketUpdate(PriceLadderTradeSide side) => side switch
+    {
+        PriceLadderTradeSide.FirstTradeColumn => _firstTradeSideMarketUpdate,
+        PriceLadderTradeSide.SecondTradeColumn => _secondTradeSideMarketUpdate,
+        _ => throw new ArgumentOutOfRangeException(nameof(side), side, "不是可交易的价格梯侧")
+    };
+
+    private int CurrentPositionCount => Math.Max(0, _longTodayPosition + _longYesterdayPosition)
+        + Math.Max(0, _shortTodayPosition + _shortYesterdayPosition);
+
+    private bool CanSendOrder() => !IsBusy && !_disposed && Quantity > 0 && Price > 0;
+
+    private bool CanCancelOrder() => !IsBusy && !_disposed && !_activeOrders.IsEmpty;
+
+    private void RefreshCommands()
+    {
+        if (_disposed) return;
+        OrderCommand.NotifyCanExecuteChanged();
+        CancelCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(ActiveOrderCount));
     }
 
     private void OnStreamError(Exception ex) => _logger.LogError(ex, "OrderStream 出错 {Instrument}", InstrumentCode);
 
-    /// <summary>把 action 调度到 UI 线程执行；无 WPF 应用上下文（单元测试）则直接内联执行。</summary>
     private static void MarshalToUi(Action action)
     {
         var dispatcher = System.Windows.Application.Current?.Dispatcher;
@@ -471,35 +701,38 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
             dispatcher.Invoke(action);
     }
 
-    /// <summary>窗口关闭时退订（释放订阅，避免泄漏）。</summary>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         _subscriptions.Dispose();
         _activeOrders.Clear();
+        _placementGate.Dispose();
     }
 }
 
-/// <summary>
-/// 报单活跃状态变更事件参数：<see cref="OrderViewModel.ActiveOrdersChanged"/> 携带的负载。
-/// 通知 <see cref="TradingViewModel"/> 重建 <see cref="Domain.MarketData.PriceLevel.PendingOrderCount"/> 聚合。
-/// </summary>
+/// <summary>活动订单的只读投影，供价格梯显示和 A/B 策略审计。</summary>
+public sealed record ActiveOrderInfo(
+    Direction Direction,
+    OffsetFlag OffsetFlag,
+    decimal Price,
+    int OriginalVolume,
+    int RemainingVolume,
+    bool CancellationRequested);
+
+/// <summary>活动订单改变时的最小负载。</summary>
 public sealed class OrderActiveStateChangedEventArgs : EventArgs
 {
-    public OrderActiveStateChangedEventArgs(Direction direction, decimal price, bool isActive)
+    public OrderActiveStateChangedEventArgs(Direction direction, OffsetFlag offsetFlag, decimal price, bool isActive)
     {
         Direction = direction;
+        OffsetFlag = offsetFlag;
         Price = price;
         IsActive = isActive;
     }
 
-    /// <summary>报单方向（Buy=多/Bid、 Sell=空/Ask）。</summary>
     public Direction Direction { get; }
-
-    /// <summary>报单价格（按 PriceTick 对齐，用于按价位聚合挂单数）。</summary>
+    public OffsetFlag OffsetFlag { get; }
     public decimal Price { get; }
-
-    /// <summary>true=新活跃（Accepted/PartiallyFilled），false=结束（Filled/Canceled/Rejected）。</summary>
     public bool IsActive { get; }
 }

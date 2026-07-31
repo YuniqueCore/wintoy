@@ -6,7 +6,7 @@ using FuturesTrader.Domain.Trading;
 namespace FuturesTrader.Application.Tests.Trading;
 
 /// <summary>
-/// OrderValidator 单元测试：覆盖 sub_4C036C 的 7 步校验链。
+/// OrderValidator 单元测试：覆盖下单前的纯校验链。
 /// 用 Stub 时段校验器 + Stub 风控服务隔离外部依赖，聚焦校验顺序与拒绝原因。
 /// </summary>
 public class OrderValidatorTests
@@ -83,47 +83,19 @@ public class OrderValidatorTests
         allowed.Should().BeTrue();
     }
 
-    // ── 步骤 3：仅平仓（CBOnlyOpen）──────────────────────────
+    // ── 步骤 3：CBNearby 行情邻近保护 ─────────────────────────
 
     [Fact]
-    public void Validate_rejects_open_direction_when_only_open_enabled()
+    public void Validate_rejects_when_relevant_market_update_is_too_recent()
     {
-        var ctx = ValidContext() with { OnlyOpenEnabled = true };
-        var request = BuyOrder() with { OffsetFlag = OffsetFlag.Open };
-
-        var (allowed, reason) = _validator.Validate(request, ctx);
-
-        allowed.Should().BeFalse();
-        reason.Should().Contain("CBOnlyOpen");
-    }
-
-    [Fact]
-    public void Validate_allows_close_direction_when_only_open_enabled()
-    {
-        var ctx = ValidContext() with { OnlyOpenEnabled = true };
-        var request = BuyOrder() with { OffsetFlag = OffsetFlag.CloseToday };
-
-        var (allowed, _) = _validator.Validate(request, ctx);
-
-        allowed.Should().BeTrue();
-    }
-
-    // ── 步骤 4：CBNearby 节流 ────────────────────────────────
-
-    [Fact]
-    public void Validate_rejects_rapid_same_direction_click_when_nearby_enabled()
-    {
+        var now = new DateTime(2026, 7, 30, 9, 30, 0);
         var ctx = ValidContext() with
         {
             NearbyEnabled = true,
-            NearbyThrottleMs = 500
+            NearbyThrottleMs = 800,
+            Now = now,
+            LastRelevantMarketUpdate = now.AddMilliseconds(-200)
         };
-        var now = new DateTime(2026, 7, 30, 9, 30, 0);
-
-        // 第一次点击：记录时刻
-        _validator.RecordClick(Direction.Buy, now);
-        // 100ms 后再次点击同方向（< 500ms 阈值）
-        ctx = ctx with { Now = now.AddMilliseconds(100) };
 
         var (allowed, reason) = _validator.Validate(BuyOrder(), ctx);
 
@@ -132,18 +104,16 @@ public class OrderValidatorTests
     }
 
     [Fact]
-    public void Validate_allows_after_nearby_throttle_window()
+    public void Validate_allows_after_nearby_protection_window()
     {
+        var now = new DateTime(2026, 7, 30, 9, 30, 0);
         var ctx = ValidContext() with
         {
             NearbyEnabled = true,
-            NearbyThrottleMs = 500
+            NearbyThrottleMs = 800,
+            Now = now,
+            LastRelevantMarketUpdate = now.AddMilliseconds(-800)
         };
-        var now = new DateTime(2026, 7, 30, 9, 30, 0);
-
-        _validator.RecordClick(Direction.Buy, now);
-        // 600ms 后再次点击（> 500ms 阈值）
-        ctx = ctx with { Now = now.AddMilliseconds(600) };
 
         var (allowed, _) = _validator.Validate(BuyOrder(), ctx);
 
@@ -151,22 +121,16 @@ public class OrderValidatorTests
     }
 
     [Fact]
-    public void Validate_allows_opposite_direction_immediately_when_nearby_enabled()
+    public void Validate_allows_when_the_relevant_trade_side_has_no_market_update()
     {
         var ctx = ValidContext() with
         {
             NearbyEnabled = true,
-            NearbyThrottleMs = 500
+            NearbyThrottleMs = 800,
+            LastRelevantMarketUpdate = null
         };
-        var now = new DateTime(2026, 7, 30, 9, 30, 0);
 
-        // 记录买方向点击
-        _validator.RecordClick(Direction.Buy, now);
-        // 立即卖方向（不同方向，不节流）
-        var sellRequest = BuyOrder() with { Direction = Direction.Sell };
-        ctx = ctx with { Now = now.AddMilliseconds(50) };
-
-        var (allowed, _) = _validator.Validate(sellRequest, ctx);
+        var (allowed, _) = _validator.Validate(BuyOrder(), ctx);
 
         allowed.Should().BeTrue();
     }
@@ -174,11 +138,14 @@ public class OrderValidatorTests
     [Fact]
     public void Validate_skips_nearby_when_disabled()
     {
-        var ctx = ValidContext() with { NearbyEnabled = false, NearbyThrottleMs = 500 };
         var now = new DateTime(2026, 7, 30, 9, 30, 0);
-
-        _validator.RecordClick(Direction.Buy, now);
-        ctx = ctx with { Now = now.AddMilliseconds(10) }; // 极短间隔
+        var ctx = ValidContext() with
+        {
+            NearbyEnabled = false,
+            NearbyThrottleMs = 800,
+            Now = now,
+            LastRelevantMarketUpdate = now
+        };
 
         var (allowed, _) = _validator.Validate(BuyOrder(), ctx);
 

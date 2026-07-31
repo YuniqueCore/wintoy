@@ -13,6 +13,12 @@ public sealed class MarketDataOptions
     /// <summary>行情服务实现选型：Mock（模拟随机游走）/ Ctp（直连 thostmduserapi_se.dll）。</summary>
     public MarketDataProvider Provider { get; init; } = MarketDataProvider.Mock;
 
+    /// <summary>
+    /// CreateFtdcMdApi 的原生运行环境。Production 会传入 bIsProductionMode=true；
+    /// 它不替代 FrontAddress 的测试/生产服务器选择。
+    /// </summary>
+    public CtpApiRuntimeMode ApiRuntimeMode { get; init; } = CtpApiRuntimeMode.Production;
+
     /// <summary>CTP 行情前置地址，如 tcp://180.168.146.187:10131（SimNow 7×24）。</summary>
     public string FrontAddress { get; init; } = string.Empty;
 
@@ -39,4 +45,10 @@ public sealed class MarketDataOptions
 
     /// <summary>Mock 模式下 tick 推送间隔（毫秒，默认 500）。</summary>
     public int MockTickIntervalMs { get; init; } = 500;
+
+    /// <summary>
+    /// Chg Nearby 行情邻近保护阈值（毫秒）。这是可配置的应用默认值，
+    /// 不是“鼠标点击后固定冷却”；旧程序最终运行值来自主窗运行时字段。
+    /// </summary>
+    public int NearbyProtectionMs { get; init; } = 800;
 }

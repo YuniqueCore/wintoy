@@ -9,8 +9,8 @@ namespace FuturesTrader.Application.Abstractions;
 /// <list type="number">
 ///   <item><b>合约存在</b>：InstrumentCode 非空且合约元数据已加载。</item>
 ///   <item><b>交易时段</b>：委托 <see cref="ITradingSessionChecker"/>，非交易时段拒单。</item>
-///   <item><b>仅平仓校验</b>：CBOnlyOpen 勾选时，仅允许平仓方向（CloseToday/CloseYesterday）。</item>
-///   <item><b>CBNearby 节流</b>：同方向点击间隔 &lt; 阈值 ms 拒单（提示 "Chg Nearby!"）。</item>
+///   <item><b>开平决策</b>：由调用方在构造请求前根据 CBOnlyOpen 和反向持仓完成。</item>
+///   <item><b>CBNearby 保护</b>：相关交易侧最近一次行情更新距当前小于阈值时拒单（提示 "Chg Nearby!"）。</item>
 ///   <item><b>对手价模式</b>：CBMorderX 勾选时，以对手盘最优价为 LimitPrice（覆盖点击价）。</item>
 ///   <item><b>本地风控</b>：委托 <see cref="ILocalRiskService"/>，报单数/持仓数超限拒单。</item>
 ///   <item><b>价格 tick 校验</b>：价格必须为 PriceTick 整数倍。</item>
@@ -28,18 +28,11 @@ public interface IOrderValidator
     /// <returns>允许返回 <c>(true, null)</c>；拒绝返回 <c>(false, 原因)</c>。</returns>
     (bool Allowed, string? Reason) Validate(OrderRequest request, OrderValidationContext context);
 
-    /// <summary>
-    /// 记录一次点击时刻（用于 CBNearby 节流）。
-    /// 在 <see cref="Validate"/> 通过后、实际下单前调用。
-    /// </summary>
-    /// <param name="direction">点击方向（Buy=左键 / Sell=右键）。</param>
-    /// <param name="clickTime">点击时刻。</param>
-    void RecordClick(Direction direction, DateTime clickTime);
 }
 
 /// <summary>
 /// 下单校验上下文：聚合校验所需的外部状态（由调用方在点击时填充）。
-/// 对齐 0527.exe TPointWindow 对象中的相关字段偏移。
+/// 对齐 0527.exe TYYWin 对象中的相关字段和运行时状态。
 /// </summary>
 public sealed record OrderValidationContext
 {
@@ -53,19 +46,19 @@ public sealed record OrderValidationContext
     public int CurrentPositionCount { get; init; }
 
     /// <summary>
-    /// CBNearby 节流是否启用（TPointWindow +1140）。
-    /// 启用时同方向点击间隔需 ≥ <see cref="NearbyThrottleMs"/>，否则拒单。
+    /// CBNearby 行情邻近保护是否启用（TYYWin +1140）。
+    /// 启用时相关交易侧自最近一次行情更新以来必须经过至少 <see cref="NearbyThrottleMs"/>。
     /// </summary>
     public bool NearbyEnabled { get; init; }
 
-    /// <summary>CBNearby 节流阈值（毫秒，来自主窗 +2244 配置）。</summary>
-    public int NearbyThrottleMs { get; init; } = 500;
+    /// <summary>CBNearby 阈值（毫秒，来自运行时配置，而非固定点击冷却）。</summary>
+    public int NearbyThrottleMs { get; init; }
 
     /// <summary>
-    /// CBOnlyOpen 是否启用（TPointWindow +1144）。
-    /// 启用时仅允许平仓方向（CloseToday/CloseYesterday/Close）。
+    /// 与本次价格梯交易侧对应的最近一次行情更新时刻。
+    /// 空值表示调用方尚未观察到可用于邻近保护的更新，不做节流拒绝。
     /// </summary>
-    public bool OnlyOpenEnabled { get; init; }
+    public DateTime? LastRelevantMarketUpdate { get; init; }
 
     /// <summary>
     /// CBMorderX 对手价模式是否启用。

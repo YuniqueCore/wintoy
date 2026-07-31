@@ -15,13 +15,18 @@ public sealed class CtpMarketDataServiceFactory : IMarketDataServiceFactory
 {
     private readonly ILoggerFactory _loggerFactory;
     private readonly int _priceLadderLevels;
+    private readonly CtpApiRuntimeMode _apiRuntimeMode;
 
     /// <param name="loggerFactory">日志工厂，用于创建 <see cref="CtpMarketDataService"/> 的 logger。</param>
     /// <param name="priceLadderLevels">价差居中价格梯上下档位数（默认 5，对齐 CTP 5 档买卖盘）。</param>
-    public CtpMarketDataServiceFactory(ILoggerFactory loggerFactory, int priceLadderLevels = 5)
+    public CtpMarketDataServiceFactory(
+        ILoggerFactory loggerFactory,
+        int priceLadderLevels = 5,
+        CtpApiRuntimeMode apiRuntimeMode = CtpApiRuntimeMode.Production)
     {
         _loggerFactory = loggerFactory;
         _priceLadderLevels = priceLadderLevels;
+        _apiRuntimeMode = apiRuntimeMode;
     }
 
     /// <inheritdoc />
@@ -37,7 +42,8 @@ public sealed class CtpMarketDataServiceFactory : IMarketDataServiceFactory
             AppId = endpoint.AppId,
             AuthCode = endpoint.AuthCode,
             FlowPath = string.IsNullOrEmpty(endpoint.FlowPath) ? "./MdFlow/" : endpoint.FlowPath,
-            PriceLadderLevels = _priceLadderLevels
+            PriceLadderLevels = _priceLadderLevels,
+            ApiRuntimeMode = _apiRuntimeMode
         };
         return new CtpMarketDataService(opts, _loggerFactory.CreateLogger<CtpMarketDataService>());
     }

@@ -27,15 +27,14 @@ public class WindowManagementTests
     [Fact]
     public void Settings_OpenFromLogin_ShowsSettingsWindow()
     {
-        var loginWindow = _fixture.LoginWindow!;
         _fixture.CloseChildWindows();
         _fixture.EnsureLoginWindowForeground();
 
-        // 等待"设置"按钮在 UIA 树中出现（FluentWindow 内容渲染有延迟，单测隔离运行时尤其明显）
+        // 用稳定的 AutomationId 在每次轮询时重新定位登录窗口，避免使用 SettingsWindow 开闭后的陈旧 UIA 包装对象。
         var settingsBtn = UiTestHelpers.WaitFor(() =>
-            loginWindow.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByName("设置"))?.AsButton(),
+            UiTestHelpers.FindOpenSettingsButton(_fixture),
             TimeSpan.FromSeconds(10));
-        settingsBtn.Should().NotBeNull("应找到设置按钮（Content='设置'）");
+        settingsBtn.Should().NotBeNull("应找到设置按钮（AutomationId=OpenSettingsButton）");
 
         // Click + 重试（先检查已存在避免堆叠多窗口，每次点击前确保前台）
         var settingsWindow = UiTestHelpers.ClickUntilWindowAppears(_fixture, settingsBtn!, "SettingsWindow");
@@ -47,11 +46,10 @@ public class WindowManagementTests
     public void Settings_Close_ReturnsToLoginWindow()
     {
         // 1. 打开设置窗口（复用 OpenFromLogin 的可靠性策略）
-        var loginWindow = _fixture.LoginWindow!;
         _fixture.CloseChildWindows();
         _fixture.EnsureLoginWindowForeground();
         var settingsBtn = UiTestHelpers.WaitFor(() =>
-            loginWindow.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByName("设置"))?.AsButton(),
+            UiTestHelpers.FindOpenSettingsButton(_fixture),
             TimeSpan.FromSeconds(10));
         settingsBtn.Should().NotBeNull("应找到设置按钮");
         var settingsWindow = UiTestHelpers.ClickUntilWindowAppears(_fixture, settingsBtn!, "SettingsWindow");
@@ -69,7 +67,7 @@ public class WindowManagementTests
         gone.Should().BeTrue("设置窗口应在 Close 后消失");
 
         // 4. 登录窗口应仍可见
-        loginWindow.IsAvailable.Should().BeTrue("关闭设置后登录窗口应仍可用");
+        _fixture.RefreshLoginWindow().Should().NotBeNull("关闭设置后登录窗口应仍可用");
     }
 
     /// <summary>单例守卫：已运行实例时，二次启动应被拦截（新进程退出）。</summary>

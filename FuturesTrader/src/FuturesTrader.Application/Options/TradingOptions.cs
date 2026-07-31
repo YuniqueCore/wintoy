@@ -12,6 +12,12 @@ public sealed class TradingOptions
     /// <summary>交易服务实现选型：Mock（本地模拟）/ Ctp（直连 thosttraderapi_se.dll）。</summary>
     public TradingProvider Provider { get; init; } = TradingProvider.Mock;
 
+    /// <summary>
+    /// CreateFtdcTraderApi 的原生运行环境。Production 会传入 bIsProductionMode=true；
+    /// 它不替代 FrontAddress 的测试/生产服务器选择。
+    /// </summary>
+    public CtpApiRuntimeMode ApiRuntimeMode { get; init; } = CtpApiRuntimeMode.Production;
+
     /// <summary>CTP 交易前置地址，如 tcp://180.168.146.187:10201（SimNow 7×24）。</summary>
     public string FrontAddress { get; init; } = string.Empty;
 

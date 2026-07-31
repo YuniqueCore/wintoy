@@ -14,10 +14,14 @@ namespace FuturesTrader.Infrastructure.Trading;
 public sealed class CtpTradingServiceFactory : ITradingServiceFactory
 {
     private readonly ILoggerFactory _loggerFactory;
+    private readonly CtpApiRuntimeMode _apiRuntimeMode;
 
-    public CtpTradingServiceFactory(ILoggerFactory loggerFactory)
+    public CtpTradingServiceFactory(
+        ILoggerFactory loggerFactory,
+        CtpApiRuntimeMode apiRuntimeMode = CtpApiRuntimeMode.Production)
     {
         _loggerFactory = loggerFactory;
+        _apiRuntimeMode = apiRuntimeMode;
     }
 
     /// <inheritdoc />
@@ -33,7 +37,8 @@ public sealed class CtpTradingServiceFactory : ITradingServiceFactory
             AppId = endpoint.AppId,
             AuthCode = endpoint.AuthCode,
             FlowPath = string.IsNullOrEmpty(endpoint.FlowPath) ? "./TraderFlow/" : endpoint.FlowPath,
-            UserProductInfo = endpoint.UserProductInfo
+            UserProductInfo = endpoint.UserProductInfo,
+            ApiRuntimeMode = _apiRuntimeMode
         };
         return new CtpTradingService(opts, _loggerFactory.CreateLogger<CtpTradingService>());
     }

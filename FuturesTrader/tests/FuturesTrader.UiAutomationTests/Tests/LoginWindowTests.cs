@@ -91,10 +91,11 @@ public class LoginWindowTests
     [Fact]
     public void LoginWindow_SettingsButton_Exists()
     {
-        var window = _fixture.LoginWindow!;
-        var btn = window.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByName("设置"));
+        var btn = UiTestHelpers.WaitFor(
+            () => UiTestHelpers.FindOpenSettingsButton(_fixture),
+            TimeSpan.FromSeconds(10));
 
-        btn.Should().NotBeNull("设置按钮应存在（Content='设置'）");
+        btn.Should().NotBeNull("设置按钮应存在（AutomationId=OpenSettingsButton）");
         btn!.ControlType.Should().Be(ControlType.Button);
     }
 

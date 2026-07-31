@@ -54,6 +54,15 @@ public static class UiTestHelpers
             ?? throw new Xunit.Sdk.XunitException($"未找到按钮 '{name}'");
 
     /// <summary>
+    /// 从当前 UIA 树重新定位登录窗口中的“设置”按钮。
+    /// SettingsWindow 开闭或主题切换后，缓存的 <see cref="Window"/> 包装对象可能不再反映当前子树；
+    /// 用稳定的 AutomationId 和即时刷新避免把 UIA 缓存抖动误判为功能缺失。
+    /// </summary>
+    public static Button? FindOpenSettingsButton(HostAppFixture fixture) =>
+        fixture.RefreshLoginWindow()?.FindFirstDescendant(
+            fixture.Automation.ConditionFactory.ByAutomationId("OpenSettingsButton"))?.AsButton();
+
+    /// <summary>
     /// Click 按钮 + 等待目标窗口出现，失败则重试。先检查窗口是否已存在避免重复点击堆叠多窗口。
     /// </summary>
     /// <param name="fixture">Host fixture，提供 <see cref="HostAppFixture.FindWindowByAutomationId"/> 和 <see cref="HostAppFixture.EnsureLoginWindowForeground"/>。</param>

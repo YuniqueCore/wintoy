@@ -72,7 +72,7 @@ public sealed class HostAppFixture : IAsyncLifetime
         App = Application.Attach(_process.Id);
 
         // 4. 等待 LoginWindow 出现（标题包含"登录"）
-        LoginWindow = UiTestHelpers.WaitFor(FindLoginWindow, StartupTimeout)
+        LoginWindow = UiTestHelpers.WaitFor(RefreshLoginWindow, StartupTimeout)
             ?? throw new TimeoutException(
                 $"启动后 {StartupTimeout.TotalSeconds}s 内未找到 LoginWindow。" +
                 "可能原因：单例守卫拦截（残留进程未清理）/ Host 启动崩溃 / 窗口标题变更");
@@ -178,10 +178,22 @@ public sealed class HostAppFixture : IAsyncLifetime
         catch { /* SetForegroundWindow 反偷焦限制，忽略 */ }
     }
 
+    /// <summary>
+    /// 重新从 UIA 树获取登录窗口，避免 owned SettingsWindow 开闭或主题更新后继续使用过期的包装对象。
+    /// </summary>
+    public Window? RefreshLoginWindow()
+    {
+        var loginWindow = FindLoginWindow();
+        if (loginWindow is not null)
+            LoginWindow = loginWindow;
+        return loginWindow;
+    }
+
     /// <summary>确保 LoginWindow 在前台（<see cref="EnsureWindowForeground"/> 的快捷入口）。</summary>
     public void EnsureLoginWindowForeground()
     {
-        if (LoginWindow is not null) EnsureWindowForeground(LoginWindow);
+        var loginWindow = RefreshLoginWindow() ?? LoginWindow;
+        if (loginWindow is not null) EnsureWindowForeground(loginWindow);
     }
 
     /// <summary>
@@ -249,8 +261,19 @@ public sealed class HostAppFixture : IAsyncLifetime
 
     private Window? FindLoginWindow()
     {
-        var win = App?.GetMainWindow(Automation, TimeSpan.FromSeconds(2));
-        return win is not null && win.Title.Contains("登录", StringComparison.Ordinal) ? win : null;
+        var cf = Automation.ConditionFactory;
+        var condition = cf.ByAutomationId("LoginWindow").And(cf.ByControlType(ControlType.Window));
+        var desktop = Automation.GetDesktop();
+
+        return desktop.FindFirstChild(condition)?.AsWindow()
+            ?? desktop.FindFirstDescendant(condition)?.AsWindow()
+            ?? FindLoginWindowByTitle();
+    }
+
+    private Window? FindLoginWindowByTitle()
+    {
+        var window = App?.GetMainWindow(Automation, TimeSpan.FromSeconds(2));
+        return window is not null && window.Title.Contains("登录", StringComparison.Ordinal) ? window : null;
     }
 
     /// <summary>清理可能残留的 Host 进程（避免单例守卫拦截）。</summary>

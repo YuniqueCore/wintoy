@@ -93,7 +93,9 @@ public sealed class CtpMarketDataService : IMarketDataService
             _spi.DepthMarketDataReceived += OnDepthMarketData;
 
             // 3. 创建 API 实例（CreateFtdcMdApi 在 6.7.13 是 4 参数）
-            _apiPtr = ThostMdApiNative.CreateFtdcMdApi(_options.FlowPath);
+            _apiPtr = ThostMdApiNative.CreateFtdcMdApi(
+                _options.FlowPath,
+                _options.ApiRuntimeMode == CtpApiRuntimeMode.Production);
             if (_apiPtr == IntPtr.Zero)
             {
                 TransitionTo(new ConnectionState.Failed("CreateFtdcMdApi 返回 null"));
@@ -107,8 +109,8 @@ public sealed class CtpMarketDataService : IMarketDataService
             // 4. RegisterSpi → RegisterFront → Init（顺序固定）
             ThostMdApiNative.RegisterSpi(_apiPtr, _spi.SpiPointer);
             ThostMdApiNative.RegisterFront(_apiPtr, _options.FrontAddress);
-            _logger.LogInformation("CtpMarketData Init 中：Front={Front} Flow={Flow}",
-                _options.FrontAddress, _options.FlowPath);
+            _logger.LogInformation("CtpMarketData Init 中：ApiRuntimeMode={ApiRuntimeMode} Flow={Flow}",
+                _options.ApiRuntimeMode, _options.FlowPath);
             ThostMdApiNative.Init(_apiPtr);
 
             // 5. 异步等待 OnFrontConnected → ReqUserLogin → OnRspUserLogin（最长 10 秒）

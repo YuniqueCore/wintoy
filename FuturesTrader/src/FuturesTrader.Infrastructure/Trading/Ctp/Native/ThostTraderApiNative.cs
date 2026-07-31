@@ -70,9 +70,9 @@ internal static class ThostTraderApiNative
         string pszFlowPath,
         [MarshalAs(UnmanagedType.U1)] bool bIsProductionMode);
 
-    /// <summary>公开包装：bIsProductionMode=false（SimNow/测试均传 false）。</summary>
-    public static IntPtr CreateFtdcTraderApi(string flowPath) =>
-        CreateFtdcTraderApiNative(flowPath ?? string.Empty, false);
+    /// <summary>公开包装：由调用方显式选择 bIsProductionMode，避免隐式使用仿真 API 模式。</summary>
+    public static IntPtr CreateFtdcTraderApi(string flowPath, bool isProductionMode) =>
+        CreateFtdcTraderApiNative(flowPath ?? string.Empty, isProductionMode);
 
     /// <summary>
     /// 获取 API 版本字符串（静态，Cdecl）。返回 const char* 指向 DLL 内部静态缓冲区。

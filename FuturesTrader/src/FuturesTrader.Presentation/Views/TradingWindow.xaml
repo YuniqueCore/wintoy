@@ -17,6 +17,7 @@
                  WindowBackdropType="Mica"
                  KeyDown="OnWindowKeyDown">
     <ui:FluentWindow.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
         <!-- 卡片 hover 样式：覆盖全窗口所有 ui:Card，鼠标移上去时背景切换到 CardHoverBackgroundBrush
              （DynamicResource 跟随主题），前景色不变以保证可读性。
              BasedOn 默认 WPF UI 卡片样式以保留圆角/阴影等外观。 -->
@@ -140,7 +141,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <RadioButton Content="ChgOrder(A)" IsChecked="{Binding IsChgOrderA, Mode=TwoWay}"
                                              FontSize="11" Margin="0,0,8,0"/>
-                                <RadioButton Content="ChgOrder(B)" IsChecked="{Binding IsChgOrderA, Converter={StaticResource InverseBool}, Mode=OneWay}"
+                                <RadioButton Content="ChgOrder(B)" IsChecked="{Binding IsChgOrderB, Mode=TwoWay}"
                                              FontSize="11"/>
                             </StackPanel>
                         </StackPanel>
@@ -181,6 +182,12 @@
                         <StackPanel>
                             <TextBlock Text="交易模式" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
                             <CheckBox Content="OnlyOpen（开仓）" IsChecked="{Binding CbOnlyOpen}" FontSize="11" Margin="0,2"/>
+                            <CheckBox IsChecked="{Binding CbOc}"
+                                      Visibility="{Binding IsCbOcConfigurationPersisted, Converter={StaticResource BooleanToVisibilityConverter}}"
+                                      FontSize="11" Margin="0,2"
+                                      ToolTip="旧版 CBOC。旧 XML 仅在 RunMode 1/2 保存；B 平仓时取消勾选会先请求撤销同方向开仓单。">
+                                <TextBlock Text="B 平仓保留同向开仓单（RunMode 1/2）" TextWrapping="Wrap"/>
+                            </CheckBox>
                             <CheckBox Content="M-OrderX（禁用）" IsChecked="{Binding MOrderX}" FontSize="11" Margin="0,2"
                                       Foreground="{DynamicResource WarningTextBrush}"/>
                         </StackPanel>

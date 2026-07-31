@@ -9,6 +9,7 @@ using FuturesTrader.Domain.Connections;
 using FuturesTrader.Domain.MarketData;
 using FuturesTrader.Domain.Trading;
 using FuturesTrader.Domain.WindowGroups;
+using FuturesTrader.Presentation.Abstractions;
 using FuturesTrader.Presentation.ViewModels;
 using FuturesTrader.Presentation.WindowHosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -31,6 +32,7 @@ public class FloatingMainViewModelTests
         StubSessionService? session = null,
         StubWindowGroupRepository? groupRepo = null,
         StubWindowHost? windowHost = null,
+        StubTradingWindowInteractionService? interaction = null,
         GroupSynchronizationCoordinator? sync = null)
     {
         session ??= new StubSessionService();
@@ -41,6 +43,7 @@ public class FloatingMainViewModelTests
             Groups = WindowLayout.CreateDefaultGroups()
         });
         windowHost ??= new StubWindowHost();
+        interaction ??= new StubTradingWindowInteractionService();
         sync ??= new GroupSynchronizationCoordinator(
             Options.Create(new UiOptions()),
             NullLogger<GroupSynchronizationCoordinator>.Instance);
@@ -55,6 +58,7 @@ public class FloatingMainViewModelTests
             session,
             groupService,
             windowHost,
+            interaction,
             sync,
             Options.Create(new UiOptions()),
             NullLogger<FloatingMainViewModel>.Instance,
@@ -165,6 +169,29 @@ public class FloatingMainViewModelTests
             "ToggleSyncModeCommand 应翻转 IsSyncGrouped（成组 ↔ 独立）");
     }
 
+    [Fact]
+    public void Floating_order_mode_applies_only_open_intent_to_existing_windows()
+    {
+        var interaction = new StubTradingWindowInteractionService();
+        var vm = CreateVm(interaction: interaction);
+
+        vm.OrderMode = FloatingOrderMode.Close;
+
+        interaction.OnlyOpenUpdates.Should().ContainSingle().Which.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Floating_ab_mode_applies_the_legacy_radio_intent_to_existing_windows()
+    {
+        var interaction = new StubTradingWindowInteractionService();
+        var vm = CreateVm(interaction: interaction);
+
+        vm.AbMode = FloatingAbMode.B;
+
+        interaction.PlacementModeUpdates.Should().ContainSingle()
+            .Which.Should().Be(OrderPlacementMode.Append);
+    }
+
     // ── 桩实现 ────────────────────────────────────────
 
     /// <summary>测试用会话服务：所有属性返回 null（未登录），只暴露必要 getter。</summary>
@@ -190,6 +217,18 @@ public class FloatingMainViewModelTests
         public void Focus(string instrumentCode) { }
         public void Close(string instrumentCode) { }
         public void CloseGroup(int groupId) { }
+    }
+
+    /// <summary>记录浮动栏向已创建窗口广播的意图，不创建或窥探任何窗口实例。</summary>
+    private sealed class StubTradingWindowInteractionService : ITradingWindowInteractionService
+    {
+        public List<bool> OnlyOpenUpdates { get; } = [];
+        public List<OrderPlacementMode> PlacementModeUpdates { get; } = [];
+
+        public void ApplyOnlyOpenToOpenWindows(bool onlyOpen) => OnlyOpenUpdates.Add(onlyOpen);
+
+        public void ApplyOrderPlacementModeToOpenWindows(OrderPlacementMode placementMode) =>
+            PlacementModeUpdates.Add(placementMode);
     }
 
     /// <summary>测试用窗口分组仓库桩：仅持有内存 WindowLayout。</summary>

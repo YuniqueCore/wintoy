@@ -32,6 +32,12 @@ public sealed record InstrumentWindow
     public bool CbNearby { get; init; }
     public bool CbOnlyOpen { get; init; }
 
+    /// <summary>
+    /// 旧控件 CBOC。B 平仓时，非零 RunMode 且该值为 false 会先请求撤销同方向开仓挂单；
+    /// 旧 XML 只在 RunMode=1/2 写出该字段。旧 DFM 未设置 Checked，默认 false。
+    /// </summary>
+    public bool CbOc { get; init; }
+
     /// <summary>GroupEX 属性（旧软件保留字段，当前固定 0）。</summary>
     public int GroupEx { get; init; }
 

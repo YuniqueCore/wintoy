@@ -112,7 +112,9 @@ public sealed class CtpTradingService : ITradingService
             _spi.RspQryTradingAccount += OnRspQryTradingAccount;
             _spi.RspQryInstrument += OnRspQryInstrument;
 
-            _apiPtr = ThostTraderApiNative.CreateFtdcTraderApi(_options.FlowPath);
+            _apiPtr = ThostTraderApiNative.CreateFtdcTraderApi(
+                _options.FlowPath,
+                _options.ApiRuntimeMode == CtpApiRuntimeMode.Production);
             if (_apiPtr == IntPtr.Zero)
             {
                 TransitionTo(new ConnectionState.Failed("CreateFtdcTraderApi 返回 null"));
@@ -128,8 +130,8 @@ public sealed class CtpTradingService : ITradingService
             ThostTraderApiNative.SubscribePrivateTopic(_apiPtr, ThostTraderApiNative.TertResume);
             ThostTraderApiNative.SubscribePublicTopic(_apiPtr, ThostTraderApiNative.TertResume);
             ThostTraderApiNative.RegisterFront(_apiPtr, _options.FrontAddress);
-            _logger.LogInformation("CtpTrading Init 中：Front={Front} Flow={Flow}",
-                _options.FrontAddress, _options.FlowPath);
+            _logger.LogInformation("CtpTrading Init 中：ApiRuntimeMode={ApiRuntimeMode} Flow={Flow}",
+                _options.ApiRuntimeMode, _options.FlowPath);
             ThostTraderApiNative.Init(_apiPtr);
 
             _connectTask = WaitForConnectAsync(cancellationToken);

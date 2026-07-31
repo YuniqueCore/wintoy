@@ -106,8 +106,7 @@ public class UserAccountEditorViewModelTests
     [Fact]
     public async Task Add_duplicate_userid_sets_error_state()
     {
-        var vm = CreateVm(out var repo);
-        repo.Seed(Sample("111111"));
+        var vm = CreateVmSeeded(out _, Sample("111111"));
         await LoadedAsync(vm);
 
         vm.NewUserId = "111111";
@@ -122,8 +121,7 @@ public class UserAccountEditorViewModelTests
     [Fact]
     public async Task Update_modifies_selected_account_persists()
     {
-        var vm = CreateVm(out var repo);
-        repo.Seed(Sample("111111", brokerId: "88888", title: "Old"));
+        var vm = CreateVmSeeded(out var repo, Sample("111111", brokerId: "88888", title: "Old"));
         await LoadedAsync(vm);
         vm.SelectedAccount = vm.Accounts[0];
 
@@ -164,8 +162,7 @@ public class UserAccountEditorViewModelTests
     [Fact]
     public async Task Delete_removes_selected_account_and_clears_selection()
     {
-        var vm = CreateVm(out var repo);
-        repo.Seed(Sample("111111"), Sample("222222"));
+        var vm = CreateVmSeeded(out var repo, Sample("111111"), Sample("222222"));
         await LoadedAsync(vm);
         vm.SelectedAccount = vm.Accounts.First(a => a.UserId == "111111");
 
@@ -201,8 +198,7 @@ public class UserAccountEditorViewModelTests
     [Fact]
     public async Task Auto_load_transitions_to_Loaded_on_success()
     {
-        var vm = CreateVm(out var repo);
-        repo.Seed(Sample("111111"), Sample("222222"));
+        var vm = CreateVmSeeded(out _, Sample("111111"), Sample("222222"));
 
         await WaitForState(vm, s => s is UserAccountEditorState.Loaded);
 
@@ -215,8 +211,7 @@ public class UserAccountEditorViewModelTests
     [Fact]
     public void EnsureLoaded_is_noop_while_loading()
     {
-        var vm = CreateVm(out var repo);
-        repo.Seed(Sample("111111"));
+        var vm = CreateVmSeeded(out _, Sample("111111"));
         SetState(vm, new UserAccountEditorState.Loading());
 
         vm.EnsureLoaded();

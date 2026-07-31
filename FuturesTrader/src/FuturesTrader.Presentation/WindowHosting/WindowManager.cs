@@ -1,6 +1,7 @@
 using System.Windows;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
+using FuturesTrader.Domain.Trading;
 using FuturesTrader.Domain.WindowGroups;
 using FuturesTrader.Presentation.Abstractions;
 using FuturesTrader.Presentation.ViewModels;
@@ -15,19 +16,22 @@ namespace FuturesTrader.Presentation.WindowHosting;
 /// <see cref="IWindowHost"/> 的真实实现：用 <see cref="TradingWindow"/>（TYYWin 复刻）管理合约窗口。
 /// <para>
 /// <see cref="Open"/>：已开则 <c>Activate</c>；否则构造 <see cref="TradingViewModel"/> → <see cref="TradingWindow"/> → 记入字典 → <c>Show()</c>。
-/// <see cref="OpenGroup"/>：循环 <see cref="Open"/> + 水平紧密排列（无重叠：window.Left = prev.Right + CompactSpacing）+ 注册到 <see cref="GroupSynchronizationCoordinator"/>。
+/// <see cref="OpenGroup"/>：隐藏其他组、恢复已有实例或创建缺失实例，再水平紧密排列（无重叠：window.Left = prev.Right + CompactSpacing）。
 /// </para>
 /// <para>
 /// 全部 <see cref="Dispatcher.Invoke"/> 包裹：MCP HTTP 线程触发时 marshalled 到 UI 线程，避免跨线程异常。
 /// TradingWindow 关闭时由其 OnClosing Dispose ViewModel（退订行情），Closed 事件移除字典项 + 注销同步。
 /// </para>
 /// </summary>
-public sealed class WindowManager : IWindowHost
+public sealed class WindowManager : IWindowHost, ITradingWindowInteractionService
 {
     private readonly IServiceProvider _services;
     private readonly ISessionService _session;
     private readonly IKeyboardOperationService _keyboard;
+    private readonly IGlobalOrderCancellationService _globalCancellation;
     private readonly GroupSynchronizationCoordinator _sync;
+    private readonly IWindowGroupRepository _windowGroupRepository;
+    private readonly WindowLayoutOptions _windowLayoutOptions;
     private readonly UiOptions _uiOptions;
     private readonly ILogger<WindowManager> _logger;
 
@@ -38,19 +42,28 @@ public sealed class WindowManager : IWindowHost
         IServiceProvider services,
         ISessionService session,
         IKeyboardOperationService keyboard,
+        IGlobalOrderCancellationService globalCancellation,
         GroupSynchronizationCoordinator sync,
+        IWindowGroupRepository windowGroupRepository,
+        IOptions<WindowLayoutOptions> windowLayoutOptions,
         IOptions<UiOptions> uiOptions,
         ILogger<WindowManager> logger)
     {
         _services = services;
         _session = session;
         _keyboard = keyboard;
+        _globalCancellation = globalCancellation;
         _sync = sync;
+        _windowGroupRepository = windowGroupRepository;
+        _windowLayoutOptions = windowLayoutOptions.Value;
         _uiOptions = uiOptions.Value;
         _logger = logger;
     }
 
-    private sealed record TrackedOpen(Window Window, int GroupId);
+    private sealed record TrackedOpen(
+        Window Window,
+        int GroupId,
+        TradingViewModel ViewModel);
 
     /// <inheritdoc />
     public bool IsOpen(string instrumentCode)
@@ -58,6 +71,26 @@ public sealed class WindowManager : IWindowHost
         ArgumentNullException.ThrowIfNull(instrumentCode);
         lock (_open) return _open.ContainsKey(instrumentCode);
     }
+
+    /// <inheritdoc />
+    public void ApplyOnlyOpenToOpenWindows(bool onlyOpen) => OnUi(() =>
+    {
+        var viewModels = SnapshotOpenViewModels();
+        foreach (var viewModel in viewModels)
+            viewModel.CbOnlyOpen = onlyOpen;
+        _logger.LogInformation("浮动栏仓平模式已应用到 {Count} 个已创建合约窗口：OnlyOpen={OnlyOpen}",
+            viewModels.Count, onlyOpen);
+    });
+
+    /// <inheritdoc />
+    public void ApplyOrderPlacementModeToOpenWindows(OrderPlacementMode placementMode) => OnUi(() =>
+    {
+        var viewModels = SnapshotOpenViewModels();
+        foreach (var viewModel in viewModels)
+            viewModel.OrderPlacementMode = placementMode;
+        _logger.LogInformation("浮动栏 A/B 模式已应用到 {Count} 个已创建合约窗口：{Mode}",
+            viewModels.Count, placementMode);
+    });
 
     /// <inheritdoc />
     public void Open(InstrumentWindow window) => OnUi(() =>
@@ -69,6 +102,9 @@ public sealed class WindowManager : IWindowHost
         {
             if (_open.TryGetValue(window.InstrumentCode, out var existing))
             {
+                MoveTrackedWindowToGroupIfNeeded(window.InstrumentCode, existing, window.GroupId);
+                if (!existing.Window.IsVisible)
+                    existing.Window.Show();
                 existing.Window.Activate();
                 return;
             }
@@ -91,7 +127,7 @@ public sealed class WindowManager : IWindowHost
             (left, top) = ComputeAppendPosition(window.GroupId, Math.Max(window.Width, 320));
         }
 
-        var tradingWindow = new TradingWindow(_keyboard)
+        var tradingWindow = new TradingWindow(_keyboard, _globalCancellation)
         {
             Title = BuildTitle(window),
             Width = Math.Max(window.Width, 320),
@@ -102,14 +138,31 @@ public sealed class WindowManager : IWindowHost
         };
 
         var groupId = window.GroupId;
+        var cancellationRegistration = _globalCancellation.Register(
+            vm.CancelAllOrdersAsync,
+            () => tradingWindow.IsVisible);
         tradingWindow.Closed += (_, _) =>
         {
-            // 窗口关闭时回写 33 字段配置（供后续持久化到 Users.xml）
+            // 窗口关闭时将 VM 的窗口级状态合并回 Users.xml，不能只计算后丢弃。
             try
             {
-                var updated = vm.ToInstrumentWindow();
-                lock (_open) _open.Remove(window.InstrumentCode);
-                _sync.Unregister(tradingWindow, groupId);
+                var registeredGroupId = groupId;
+                lock (_open)
+                {
+                    if (_open.Remove(window.InstrumentCode, out var tracked))
+                        registeredGroupId = tracked.GroupId;
+                }
+                var updated = vm.ToInstrumentWindow() with
+                {
+                    GroupId = registeredGroupId,
+                    Top = (int)Math.Round(tradingWindow.Top),
+                    Left = (int)Math.Round(tradingWindow.Left),
+                    Height = (int)Math.Round(tradingWindow.Height),
+                    Width = (int)Math.Round(tradingWindow.Width)
+                };
+                _sync.Unregister(tradingWindow, registeredGroupId);
+                cancellationRegistration.Dispose();
+                PersistWindowConfiguration(updated);
                 _logger.LogInformation("合约窗口已关闭: {Instrument}", window.InstrumentCode);
             }
             catch (Exception ex)
@@ -118,7 +171,7 @@ public sealed class WindowManager : IWindowHost
             }
         };
 
-        lock (_open) _open[window.InstrumentCode] = new TrackedOpen(tradingWindow, groupId);
+        lock (_open) _open[window.InstrumentCode] = new TrackedOpen(tradingWindow, groupId, vm);
         _sync.Register(tradingWindow, groupId);
         tradingWindow.Show();
         _logger.LogInformation("合约窗口已打开: {Instrument} (组 {Group})", window.InstrumentCode, groupId);
@@ -136,10 +189,6 @@ public sealed class WindowManager : IWindowHost
         // 单组显示：先把其他分组的窗口隐藏（不关，保留 VM/状态/订阅），
         // 避免多组同屏混乱。对齐 0527.exe「点组号 → 只显该组」的语义。
         HideOtherGroups(groupId);
-
-        // 强制重排当前组：先关掉当前已开的同组窗口（关事件会回写最新位置到 layout），
-        // 再 OpenGroup 用布局中的位置紧排。下次切回该组时不会因上次拖动基线错位而重叠。
-        CloseGroup(groupId);
 
         // 水平紧密排列 + 整组居中：计算总宽度后从屏幕工作区水平居中起始。
         // 关键修复：用 ClampWidth 强制最小宽度 320（默认 271 太小导致叠加时窗口收窄不可见），
@@ -162,55 +211,114 @@ public sealed class WindowManager : IWindowHost
             currentX += arrangedWidths[i] + spacing;
         }
 
-        // 第二遍：开窗（Open 内部用 arranged.Left/Top），开完后用 _open 中的实际窗口同步一次 Left，
-        // 防止 tradingWindow 构造时 Width 设定后 chrome 调整让 ActualWidth 与预期不一致。
-        for (var i = 0; i < arranged.Count; i++)
+        // 第二遍：恢复已有实例，或只为不存在的合约创建新窗。切组不得 Close/Recreate，
+        // 否则会丢失订单生命周期、行情订阅和窗口内临时状态。
+        foreach (var arrangedWindow in arranged)
         {
-            Open(arranged[i]);
+            if (RestoreOpenWindow(arrangedWindow))
+                continue;
+            Open(arrangedWindow);
         }
 
         // 第三遍：用实际渲染后的 ActualWidth 校正 Left（最关键的「无重叠」保证）。
         // 如果 ActualWidth < 预期宽度（窗口被压缩），左移后续窗口；反之亦然。
-        // 用 synchronized 字典的引用顺序：按 Open 调用顺序遍历 _open 中当前组。
-        TightenGroupLayout(groupId, spacing);
+        // 以布局文件中的分组顺序为准，不依赖 Dictionary 枚举顺序。
+        TightenGroupLayout(groupId, spacing, arranged.Select(window => window.InstrumentCode).ToArray());
 
-        _logger.LogInformation("已打开分组 {GroupId} 的 {Count} 个窗口（隐藏其他组 + 重排）",
+        _logger.LogInformation("已恢复分组 {GroupId} 的 {Count} 个窗口（隐藏其他组 + 重排）",
             groupId, windows.Count);
     });
 
-    /// <summary>
-    /// 按当前 _open 字典的顺序，重新计算同组窗口的 Left，确保相邻窗口 ActualWidth 紧贴 + spacing，
-    /// 避免 Open 时 Width 设置与实际渲染后 ActualWidth 不一致导致的 1-2 像素重叠或缝隙。
-    /// 复刻 0527.exe「窗口边缘紧贴」语义。
-    /// </summary>
-    private void TightenGroupLayout(int groupId, int spacing)
+    /// <summary>恢复已有窗口时仅更新几何和可见性，不重新构造其 ViewModel。</summary>
+    private bool RestoreOpenWindow(InstrumentWindow config)
     {
-        List<Window> sameGroup;
+        TrackedOpen? existing;
+        lock (_open) _open.TryGetValue(config.InstrumentCode, out existing);
+        if (existing is null) return false;
+
+        MoveTrackedWindowToGroupIfNeeded(config.InstrumentCode, existing, config.GroupId);
+        var window = existing.Window;
+        window.Width = Math.Max(config.Width, 320);
+        window.Height = Math.Max(config.Height, 480);
+        window.Left = config.Left;
+        window.Top = config.Top;
+        if (!window.IsVisible) window.Show();
+        return true;
+    }
+
+    /// <summary>合约重新分组时保留原窗口和 ViewModel，只更新组注册表。</summary>
+    private void MoveTrackedWindowToGroupIfNeeded(string instrumentCode, TrackedOpen existing, int targetGroupId)
+    {
+        if (existing.GroupId == targetGroupId) return;
+        _sync.Unregister(existing.Window, existing.GroupId);
+        _sync.Register(existing.Window, targetGroupId);
+        lock (_open) _open[instrumentCode] = existing with { GroupId = targetGroupId };
+    }
+
+    /// <summary>取活动 VM 快照后再执行属性更新，避免持锁调用绑定/通知代码。</summary>
+    private IReadOnlyList<TradingViewModel> SnapshotOpenViewModels()
+    {
+        lock (_open)
+            return _open.Values.Select(tracked => tracked.ViewModel).ToArray();
+    }
+
+    /// <summary>
+    /// 将单窗回写与最新持久化布局合并，避免浮动栏持有的旧 WindowLayout 快照覆盖刚关闭窗口的 A/B 或仓平设置。
+    /// </summary>
+    private void PersistWindowConfiguration(InstrumentWindow updated)
+    {
+        var layout = _windowGroupRepository.Load(_windowLayoutOptions);
+        var exists = layout.Windows.Any(window =>
+            string.Equals(window.InstrumentCode, updated.InstrumentCode, StringComparison.Ordinal));
+        var windows = layout.Windows
+            .Select(window => string.Equals(window.InstrumentCode, updated.InstrumentCode, StringComparison.Ordinal)
+                ? updated
+                : window)
+            .ToArray();
+        if (!exists)
+            windows = windows.Append(updated).ToArray();
+
+        _windowGroupRepository.Save(_windowLayoutOptions, layout with { Windows = windows });
+    }
+
+    /// <summary>
+    /// 重新计算同组窗口的 Left，确保相邻窗口 ActualWidth 紧贴 + spacing。
+    /// 传入顺序时严格采用布局文件顺序；否则以当前 Left 为顺序。
+    /// </summary>
+    private void TightenGroupLayout(int groupId, int spacing, IReadOnlyList<string>? orderedInstrumentCodes = null)
+    {
+        List<(string InstrumentCode, Window Window)> sameGroup;
         lock (_open)
         {
             sameGroup = _open
-                .Where(kv => kv.Value.GroupId == groupId)
-                .Select(kv => kv.Value.Window)
+                .Where(pair => pair.Value.GroupId == groupId)
+                .Select(pair => (pair.Key, pair.Value.Window))
                 .ToList();
         }
         if (sameGroup.Count <= 1) return;
 
-        // 按当前 Left 升序排列 → 从左到右依次重排
-        sameGroup.Sort((a, b) => a.Left.CompareTo(b.Left));
+        if (orderedInstrumentCodes is not null)
+        {
+            var order = orderedInstrumentCodes
+                .Select((code, index) => (code, index))
+                .ToDictionary(item => item.code, item => item.index, StringComparer.Ordinal);
+            sameGroup.Sort((left, right) =>
+                order.GetValueOrDefault(left.InstrumentCode, int.MaxValue)
+                    .CompareTo(order.GetValueOrDefault(right.InstrumentCode, int.MaxValue)));
+        }
+        else
+        {
+            sameGroup.Sort((left, right) => left.Window.Left.CompareTo(right.Window.Left));
+        }
 
-        // 第一窗口：从它的 Left 开始
-        var currentLeft = sameGroup[0].Left;
-        sameGroup[0].Left = currentLeft;
         for (var i = 1; i < sameGroup.Count; i++)
         {
-            var prev = sameGroup[i - 1];
-            var expectedNextLeft = prev.Left + prev.ActualWidth + spacing;
-            // 只有当现有 Left 与期望差距 > 0.5 像素时才校正（避免抖动）
-            if (Math.Abs(sameGroup[i].Left - expectedNextLeft) > 0.5)
-            {
-                sameGroup[i].Left = expectedNextLeft;
-            }
-            currentLeft = sameGroup[i].Left;
+            var previous = sameGroup[i - 1].Window;
+            var current = sameGroup[i].Window;
+            var previousWidth = previous.ActualWidth > 0 ? previous.ActualWidth : previous.Width;
+            var expectedNextLeft = previous.Left + previousWidth + spacing;
+            if (Math.Abs(current.Left - expectedNextLeft) > 0.5)
+                current.Left = expectedNextLeft;
         }
     }
 

@@ -54,7 +54,7 @@ internal static class ThostMdApiNative
 
     /// <summary>
     /// 创建 MdApi 实例。返回 C++ 对象指针（ IntPtr.Zero 表示失败）。
-    /// 三个 bool：isUsingUdp / isMulticast / isProductionMode（6.7.11 增）。SimNow/生产均传 false。
+    /// 三个 bool：isUsingUdp / isMulticast / isProductionMode（6.7.11 增）。
     /// </summary>
     [DllImport(DllName, EntryPoint = CreateFtdcMdApiEntryPoint,
         CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
@@ -65,9 +65,12 @@ internal static class ThostMdApiNative
         [MarshalAs(UnmanagedType.U1)] bool bIsMulticast,
         [MarshalAs(UnmanagedType.U1)] bool bIsProductionMode);
 
-    /// <summary>公开包装：flowPath 用 ANSI（CTP 内部按 GBK 处理路径，纯 ASCII 路径无差异），三个 bool 全 false。</summary>
-    public static IntPtr CreateFtdcMdApi(string flowPath) =>
-        CreateFtdcMdApiNative(flowPath ?? string.Empty, false, false, false);
+    /// <summary>
+    /// 公开包装：flowPath 用 ANSI（CTP 内部按 GBK 处理路径，纯 ASCII 路径无差异）；
+    /// UDP/多播保持关闭，生产标志由调用方显式传入，避免把生产 API 静默降级为仿真模式。
+    /// </summary>
+    public static IntPtr CreateFtdcMdApi(string flowPath, bool isProductionMode) =>
+        CreateFtdcMdApiNative(flowPath ?? string.Empty, false, false, isProductionMode);
 
     /// <summary>
     /// 获取 API 版本字符串（静态，Cdecl）。返回 const char* 指向 DLL 内静态缓冲。

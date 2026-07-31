@@ -249,12 +249,13 @@ public class SettingsViewModelTests
     }
 
     [Fact]
-    public async Task Save_enabled_after_load()
+    public async Task LoadAsync_during_startup_load_waits_until_save_is_enabled()
     {
         var vm = CreateVm();
 
         await vm.LoadAsync();
 
+        vm.State.Should().BeOfType<ConfigEditorState.Loaded>("LoadAsync 必须等待构造时启动的自动加载完成");
         vm.SaveCommand.CanExecute(null).Should().BeTrue("加载后应可保存");
     }
 }

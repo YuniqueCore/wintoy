@@ -235,53 +235,68 @@ public sealed class ThemeService : IThemeService
         if (theme == ApplicationTheme.Light)
         {
             // Light 主题：用低饱和色，背景淡红/淡蓝/浅琥珀，文字深色
-            ReplaceBrush(app, "PriceListAskRowBackgroundBrush", Color.FromRgb(0xFB, 0xE4, 0xE4));       // 淡红底
-            ReplaceBrush(app, "PriceListBidRowBackgroundBrush", Color.FromRgb(0xE3, 0xEE, 0xFB));       // 淡蓝底
-            ReplaceBrush(app, "PriceListAskPriceForegroundBrush", Color.FromRgb(0xC4, 0x2B, 0x1F));     // 深红文字
-            ReplaceBrush(app, "PriceListBidPriceForegroundBrush", Color.FromRgb(0x1F, 0x4E, 0xA8));     // 深蓝文字
-            ReplaceBrush(app, "PriceListAskVolumeForegroundBrush", Color.FromRgb(0x6B, 0x1F, 0x1F));    // 暗红
-            ReplaceBrush(app, "PriceListBidVolumeForegroundBrush", Color.FromRgb(0x1F, 0x3A, 0x6B));    // 暗蓝
-            ReplaceBrush(app, "PriceListCenterRowBackgroundBrush", Color.FromRgb(0xFF, 0xD7, 0x40));    // 浅琥珀
-            ReplaceBrush(app, "PriceListControlBackgroundBrush", Color.FromRgb(0xF6, 0xF6, 0xF6));      // 浅灰底
-            ReplaceBrush(app, "PriceListPendingOrderForegroundBrush", Color.FromRgb(0xC4, 0x6A, 0x00));  // 琥珀
+            ReplaceBrush(app.Resources, "PriceListAskRowBackgroundBrush", Color.FromRgb(0xFB, 0xE4, 0xE4));       // 淡红底
+            ReplaceBrush(app.Resources, "PriceListBidRowBackgroundBrush", Color.FromRgb(0xE3, 0xEE, 0xFB));       // 淡蓝底
+            ReplaceBrush(app.Resources, "PriceListAskPriceForegroundBrush", Color.FromRgb(0xC4, 0x2B, 0x1F));     // 深红文字
+            ReplaceBrush(app.Resources, "PriceListBidPriceForegroundBrush", Color.FromRgb(0x1F, 0x4E, 0xA8));     // 深蓝文字
+            ReplaceBrush(app.Resources, "PriceListAskVolumeForegroundBrush", Color.FromRgb(0x6B, 0x1F, 0x1F));    // 暗红
+            ReplaceBrush(app.Resources, "PriceListBidVolumeForegroundBrush", Color.FromRgb(0x1F, 0x3A, 0x6B));    // 暗蓝
+            ReplaceBrush(app.Resources, "PriceListCenterRowBackgroundBrush", Color.FromRgb(0xFF, 0xD7, 0x40));    // 浅琥珀
+            ReplaceBrush(app.Resources, "PriceListControlBackgroundBrush", Color.FromRgb(0xF6, 0xF6, 0xF6));      // 浅灰底
+            ReplaceBrush(app.Resources, "PriceListPendingOrderForegroundBrush", Color.FromRgb(0xC4, 0x6A, 0x00));  // 琥珀
             // Hover 变体：Light 主题下比默认稍深（约 8%），给出"按下去"的视觉提示但不破坏柔和配色
-            ReplaceBrush(app, "PriceListAskRowHoverBackgroundBrush", Color.FromRgb(0xF1, 0xCE, 0xCE));
-            ReplaceBrush(app, "PriceListBidRowHoverBackgroundBrush", Color.FromRgb(0xCE, 0xDE, 0xF1));
-            ReplaceBrush(app, "PriceListCenterRowHoverBackgroundBrush", Color.FromRgb(0xFF, 0xC1, 0x07));
-            ReplaceBrush(app, "CardHoverBackgroundBrush", Color.FromRgb(0xEC, 0xEC, 0xEC));
+            ReplaceBrush(app.Resources, "PriceListAskRowHoverBackgroundBrush", Color.FromRgb(0xF1, 0xCE, 0xCE));
+            ReplaceBrush(app.Resources, "PriceListBidRowHoverBackgroundBrush", Color.FromRgb(0xCE, 0xDE, 0xF1));
+            ReplaceBrush(app.Resources, "PriceListCenterRowHoverBackgroundBrush", Color.FromRgb(0xFF, 0xC1, 0x07));
+            ReplaceBrush(app.Resources, "CardHoverBackgroundBrush", Color.FromRgb(0xEC, 0xEC, 0xEC));
         }
         else
         {
             // Dark 主题：饱和红蓝（App.xaml 默认值）
-            ReplaceBrush(app, "PriceListAskRowBackgroundBrush", Color.FromRgb(0x3D, 0x00, 0x00));
-            ReplaceBrush(app, "PriceListBidRowBackgroundBrush", Color.FromRgb(0x00, 0x1F, 0x3D));
-            ReplaceBrush(app, "PriceListAskPriceForegroundBrush", Color.FromRgb(0xFF, 0x66, 0x66));
-            ReplaceBrush(app, "PriceListBidPriceForegroundBrush", Color.FromRgb(0x66, 0xAA, 0xFF));
-            ReplaceBrush(app, "PriceListAskVolumeForegroundBrush", Color.FromRgb(0xFF, 0xAA, 0xAA));
-            ReplaceBrush(app, "PriceListBidVolumeForegroundBrush", Color.FromRgb(0xAA, 0xAA, 0xFF));
-            ReplaceBrush(app, "PriceListCenterRowBackgroundBrush", Color.FromRgb(0xFF, 0xC1, 0x07));
-            ReplaceBrush(app, "PriceListControlBackgroundBrush", Color.FromRgb(0x1E, 0x1E, 0x1E));
-            ReplaceBrush(app, "PriceListPendingOrderForegroundBrush", Color.FromRgb(0xFF, 0xD7, 0x40));
+            ReplaceBrush(app.Resources, "PriceListAskRowBackgroundBrush", Color.FromRgb(0x3D, 0x00, 0x00));
+            ReplaceBrush(app.Resources, "PriceListBidRowBackgroundBrush", Color.FromRgb(0x00, 0x1F, 0x3D));
+            ReplaceBrush(app.Resources, "PriceListAskPriceForegroundBrush", Color.FromRgb(0xFF, 0x66, 0x66));
+            ReplaceBrush(app.Resources, "PriceListBidPriceForegroundBrush", Color.FromRgb(0x66, 0xAA, 0xFF));
+            ReplaceBrush(app.Resources, "PriceListAskVolumeForegroundBrush", Color.FromRgb(0xFF, 0xAA, 0xAA));
+            ReplaceBrush(app.Resources, "PriceListBidVolumeForegroundBrush", Color.FromRgb(0xAA, 0xAA, 0xFF));
+            ReplaceBrush(app.Resources, "PriceListCenterRowBackgroundBrush", Color.FromRgb(0xFF, 0xC1, 0x07));
+            ReplaceBrush(app.Resources, "PriceListControlBackgroundBrush", Color.FromRgb(0x1E, 0x1E, 0x1E));
+            ReplaceBrush(app.Resources, "PriceListPendingOrderForegroundBrush", Color.FromRgb(0xFF, 0xD7, 0x40));
             // Hover 变体：Dark 主题下比默认稍亮（约 12%），与 WPF UI ControlFillColorSecondary 一致
-            ReplaceBrush(app, "PriceListAskRowHoverBackgroundBrush", Color.FromRgb(0x5D, 0x10, 0x10));
-            ReplaceBrush(app, "PriceListBidRowHoverBackgroundBrush", Color.FromRgb(0x10, 0x29, 0x4D));
-            ReplaceBrush(app, "PriceListCenterRowHoverBackgroundBrush", Color.FromRgb(0xFF, 0xD7, 0x40));
-            ReplaceBrush(app, "CardHoverBackgroundBrush", Color.FromRgb(0x38, 0x38, 0x38));
+            ReplaceBrush(app.Resources, "PriceListAskRowHoverBackgroundBrush", Color.FromRgb(0x5D, 0x10, 0x10));
+            ReplaceBrush(app.Resources, "PriceListBidRowHoverBackgroundBrush", Color.FromRgb(0x10, 0x29, 0x4D));
+            ReplaceBrush(app.Resources, "PriceListCenterRowHoverBackgroundBrush", Color.FromRgb(0xFF, 0xD7, 0x40));
+            ReplaceBrush(app.Resources, "CardHoverBackgroundBrush", Color.FromRgb(0x38, 0x38, 0x38));
         }
     }
 
-    /// <summary>替换 App.Resources 中已存在的 SolidColorBrush（保持引用身份以便 DynamicResource 触发刷新）。</summary>
-    private static void ReplaceBrush(System.Windows.Application app, string key, Color color)
+    /// <summary>
+    /// 更新主题画刷资源。WPF 可以冻结由 XAML 加载的 <see cref="SolidColorBrush"/>；
+    /// 冻结实例不能直接修改，必须先复制并替换资源项。
+    /// </summary>
+    internal static void ReplaceBrush(ResourceDictionary resources, object key, Color color)
     {
-        if (app.Resources[key] is SolidColorBrush brush)
+        ArgumentNullException.ThrowIfNull(resources);
+        ArgumentNullException.ThrowIfNull(key);
+
+        if (resources[key] is SolidColorBrush brush)
         {
-            // 不替换 brush 实例本身，只改 Color → DynamicResource 引用者会收到 Brush.Changed 通知并重绘
-            brush.Color = color;
+            if (!brush.IsFrozen)
+            {
+                // 可写资源保留原实例，兼容可能直接持有该画刷的既有控件。
+                brush.Color = color;
+                return;
+            }
+
+            // CloneCurrentValue 生成可写副本并保留透明度/变换等非颜色属性；
+            // 将它重新放入 ResourceDictionary 后，DynamicResource 使用者会重新解析该键。
+            var replacement = (SolidColorBrush)brush.CloneCurrentValue();
+            replacement.Color = color;
+            resources[key] = replacement;
+            return;
         }
-        else
-        {
-            // 第一次进入时（如 App 启动时尚未注册），写入新实例
-            app.Resources[key] = new SolidColorBrush(color);
-        }
+
+        // 首次进入或键被意外覆盖为非 SolidColorBrush 时，恢复可用的主题画刷。
+        resources[key] = new SolidColorBrush(color);
     }
 }
