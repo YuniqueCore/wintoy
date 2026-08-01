@@ -15,12 +15,14 @@ namespace FuturesTrader.Presentation.Controls;
 /// <code>
 /// &lt;controls:SegmentedControl ItemsSource="{Binding DisplayModes}"
 ///                              SelectedValue="{Binding DisplayMode, Mode=TwoWay}"
-///                              LabelSelector="Name" /&gt;
+///                              ValueSelector="Value"
+///                              LabelSelector="Label" /&gt;
 /// </code>
 /// </para>
 /// <para>
 /// <see cref="ItemsSource"/> 接受任意 <see cref="IEnumerable"/>（推荐 enum 值或值对象）。
-/// <see cref="SelectedValue"/> 用引用相等匹配（enum 自动装箱后正确比较）。
+/// <see cref="SelectedValue"/> 使用 <see cref="object.Equals(object?, object?)"/> 匹配。
+/// <see cref="ValueSelector"/> 是项上参与选中/回写的属性名（空 = 使用整个项）。
 /// <see cref="LabelSelector"/> 是项上的属性名（反射读取作为按钮文本），例如 <c>"Name"</c> 或 <c>""</c>（直接 ToString）。
 /// </para>
 /// </summary>
@@ -90,6 +92,20 @@ public sealed partial class SegmentedControl : UserControl
             typeof(SegmentedControl),
             new PropertyMetadata(string.Empty));
 
+    /// <summary>值选择器：项上参与 SelectedValue 匹配和回写的属性名（空 = 使用整个项）。</summary>
+    public string ValueSelector
+    {
+        get => (string)GetValue(ValueSelectorProperty);
+        set => SetValue(ValueSelectorProperty, value);
+    }
+
+    public static readonly DependencyProperty ValueSelectorProperty =
+        DependencyProperty.Register(
+            nameof(ValueSelector),
+            typeof(string),
+            typeof(SegmentedControl),
+            new PropertyMetadata(string.Empty));
+
     private static void OnItemsSourceChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         ((SegmentedControl)d).RebuildSegments();
@@ -120,7 +136,8 @@ public sealed partial class SegmentedControl : UserControl
         {
             var label = ResolveLabel(item);
             var tooltip = ResolveTooltip(item);
-            SegmentItems.Add(new SegmentItem(item, label, tooltip, OnSegmentClicked));
+            var value = ResolveMember(item, ValueSelector) ?? item;
+            SegmentItems.Add(new SegmentItem(value, label, tooltip, OnSegmentClicked));
         }
 
         // 优先用 _pendingSelection（在 SegmentItems 尚未填充时缓存的初始 SelectedValue），
@@ -146,15 +163,21 @@ public sealed partial class SegmentedControl : UserControl
 
     private string ResolveLabel(object item)
     {
-        if (string.IsNullOrEmpty(LabelSelector)) return item.ToString() ?? string.Empty;
-        var prop = item.GetType().GetProperty(LabelSelector);
-        return prop?.GetValue(item)?.ToString() ?? item.ToString() ?? string.Empty;
+        return ResolveMember(item, LabelSelector)?.ToString() ?? item.ToString() ?? string.Empty;
     }
 
     private string? ResolveTooltip(object item)
     {
         if (item is FrameworkElement fe) return fe.ToolTip?.ToString();
-        return null;
+        return ResolveMember(item, "Description")?.ToString();
+    }
+
+    /// <summary>读取选项值/标签的纯反射边界，供无 WPF 窗口的单元测试验证值对象绑定。</summary>
+    internal static object? ResolveMember(object item, string selector)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (string.IsNullOrWhiteSpace(selector)) return item;
+        return item.GetType().GetProperty(selector)?.GetValue(item);
     }
 }
 

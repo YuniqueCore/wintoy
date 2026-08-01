@@ -113,17 +113,18 @@ public partial class LoginViewModel : ObservableObject
 
             // 加载账号
             var accounts = _accountRepo.Load(_loginOptions.UsersXmlPath);
-            // Mock 模式下若 Users.xml 无账号，注入测试账号（来自 appsettings）
+            // Mock 模式下若 Users.xml 无账号，注入无权限的本地占位账号，保证离线 UI 可用。
+            // 真实 CTP 凭据只能经用户配置或当前进程的临时测试环境注入，绝不能硬编码进客户端。
             if (accounts.Count == 0 && _loginOptions.UseMock)
             {
                 accounts = [new AccountEntry
                 {
-                    Title = "000102",
-                    UserId = "000102",
-                    BrokerId = "8080",
-                    TradingAddress = "tcp://60.12.233.58:18105",
-                    AppId = "client_qihuo159_1.0",
-                    AuthCode = "AC2F6ESEXEEYSIGU"
+                    Title = "Mock account",
+                    UserId = "mock-user",
+                    BrokerId = "mock-broker",
+                    TradingAddress = "tcp://127.0.0.1:1",
+                    AppId = "mock-app",
+                    AuthCode = "mock-auth"
                 }];
             }
             Accounts = new ObservableCollection<AccountEntry>(accounts);

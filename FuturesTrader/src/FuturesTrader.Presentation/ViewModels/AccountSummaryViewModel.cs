@@ -24,7 +24,7 @@ public sealed partial class AccountSummaryViewModel : ObservableObject, IDisposa
     private readonly ITradingService _trading;
     private readonly ILogger<AccountSummaryViewModel> _logger;
     private readonly CompositeDisposable _subscriptions = new();
-    private readonly Dictionary<string, int> _positionsByInstrument = new();
+    private readonly Dictionary<(string InstrumentId, Direction Direction), int> _positions = new();
     private bool _disposed;
 
     public AccountSummaryViewModel(ITradingService trading, ILogger<AccountSummaryViewModel> logger)
@@ -70,8 +70,8 @@ public sealed partial class AccountSummaryViewModel : ObservableObject, IDisposa
         var positionSub = _trading.PositionStream.Subscribe(
             pos => MarshalToUi(() =>
             {
-                _positionsByInstrument[pos.InstrumentId] = Math.Abs(pos.TotalPosition);
-                PositionLots = _positionsByInstrument.Values.Sum();
+                _positions[(pos.InstrumentId, pos.Direction)] = Math.Abs(pos.TotalPosition);
+                PositionLots = _positions.Values.Sum();
             }),
             ex => _logger.LogError(ex, "PositionStream 订阅异常"));
         _subscriptions.Add(positionSub);

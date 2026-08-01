@@ -137,6 +137,13 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
         _logger.LogWarning("价格梯报单已阻止：{Instrument} {Reason}", InstrumentCode, reason);
     }
 
+    /// <summary>把价格梯入口的未预期异常转成用户可见反馈；异常详情仍由上层记录完整日志。</summary>
+    public void ReportPriceLadderOrderFailure(string reason)
+    {
+        if (_disposed) return;
+        StatusMessage = $"报单失败：{reason}";
+    }
+
     partial void OnDirectionChanged(Direction value) => RefreshCommands();
     partial void OnOffsetFlagChanged(OffsetFlag value) => RefreshCommands();
     partial void OnPriceChanged(decimal value) => RefreshCommands();
@@ -587,12 +594,14 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
     {
         if (_activeOrders.TryGetValue(result.OrderRef, out var existing))
         {
-            _activeOrders[result.OrderRef] = existing with
+            var updated = existing with
             {
                 FrontId = result.FrontId,
                 SessionId = result.SessionId,
                 RemainingVolume = ResolveRemainingVolume(result, existing.RemainingVolume)
             };
+            _activeOrders[result.OrderRef] = updated;
+            NotifyActiveOrderChanged(updated, isActive: true);
             return;
         }
 
@@ -618,10 +627,9 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
     private void UpdateActiveOrderRemainingVolume(OrderResult result)
     {
         if (!_activeOrders.TryGetValue(result.OrderRef, out var existing)) return;
-        _activeOrders.TryUpdate(
-            result.OrderRef,
-            existing with { RemainingVolume = ResolveRemainingVolume(result, existing.RemainingVolume) },
-            existing);
+        var updated = existing with { RemainingVolume = ResolveRemainingVolume(result, existing.RemainingVolume) };
+        if (_activeOrders.TryUpdate(result.OrderRef, updated, existing))
+            NotifyActiveOrderChanged(updated, isActive: true);
     }
 
     private static int ResolveRemainingVolume(OrderResult result, int fallbackVolume)

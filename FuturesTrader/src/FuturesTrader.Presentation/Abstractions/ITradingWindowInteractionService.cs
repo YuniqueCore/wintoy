@@ -13,4 +13,7 @@ public interface ITradingWindowInteractionService
 
     /// <summary>将 A/B 单选意图应用到全部已创建的合约窗口（含当前隐藏的其他组）。</summary>
     void ApplyOrderPlacementModeToOpenWindows(OrderPlacementMode placementMode);
+
+    /// <summary>显示或隐藏价格梯无人报价行，并作为随后新建合约窗口的会话默认值。</summary>
+    void ApplyWhiteGridVisibilityToOpenWindows(bool showWhiteGrid);
 }

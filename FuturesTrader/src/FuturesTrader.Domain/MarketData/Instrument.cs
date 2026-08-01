@@ -25,6 +25,15 @@ public sealed record Instrument
     /// <summary>合约乘数（手数 × 价格 → 成交金额 的乘数）。</summary>
     public int VolumeMultiple { get; init; }
 
+    /// <summary>限价单最小手数（来自 CTP <c>MinLimitOrderVolume</c>）。</summary>
+    public int MinLimitOrderVolume { get; init; }
+
+    /// <summary>限价单最大手数（来自 CTP <c>MaxLimitOrderVolume</c>）。</summary>
+    public int MaxLimitOrderVolume { get; init; }
+
+    /// <summary>交易所当前是否允许该合约交易（CTP <c>IsTrading</c>）。</summary>
+    public bool IsTrading { get; init; }
+
     /// <summary>产品类型（CTP byte，ASCII 字符）：'1'=期货 '2'=期权 '3'=组合 '5'=现货 'F'=价差。</summary>
     public byte ProductClass { get; init; }
 

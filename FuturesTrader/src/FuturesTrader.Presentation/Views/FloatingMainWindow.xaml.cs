@@ -1,5 +1,9 @@
+using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
 using FuturesTrader.Presentation.ViewModels;
 
 namespace FuturesTrader.Presentation.Views;
@@ -22,6 +26,7 @@ public partial class FloatingMainWindow : Window
         InitializeComponent();
         ViewModel = viewModel;
         DataContext = viewModel;
+        SearchPopup.CustomPopupPlacementCallback = PlaceSearchPopup;
         Loaded += OnLoaded;
     }
 
@@ -44,6 +49,31 @@ public partial class FloatingMainWindow : Window
         if (Width > workArea.Width) Width = workArea.Width;
         Left = workArea.Left + (workArea.Width - Width) / 2;
         Top = workArea.Bottom - Height - 4;
+    }
+
+    /// <summary>
+    /// 将合约候选弹层限制在浮动栏所在显示器的工作区内；底部空间不足时自动向上展开。
+    /// </summary>
+    private CustomPopupPlacement[] PlaceSearchPopup(Size popupSize, Size targetSize, Point offset)
+    {
+        var presentationSource = PresentationSource.FromVisual(SearchBox);
+        var fromDevice = presentationSource?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        var targetTopLeft = fromDevice.Transform(SearchBox.PointToScreen(new Point(0, 0)));
+        var targetBounds = new Rect(targetTopLeft, targetSize);
+        var placement = SearchPopupPlacement.Calculate(popupSize, targetBounds, GetMonitorWorkArea(fromDevice));
+        return [new CustomPopupPlacement(placement, PopupPrimaryAxis.Horizontal)];
+    }
+
+    private Rect GetMonitorWorkArea(Matrix fromDevice)
+    {
+        var monitor = MonitorFromWindow(new WindowInteropHelper(this).Handle, MonitorDefaultToNearest);
+        var monitorInfo = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (monitor == 0 || !GetMonitorInfo(monitor, ref monitorInfo))
+            return SystemParameters.WorkArea;
+
+        var topLeft = fromDevice.Transform(new Point(monitorInfo.WorkArea.Left, monitorInfo.WorkArea.Top));
+        var bottomRight = fromDevice.Transform(new Point(monitorInfo.WorkArea.Right, monitorInfo.WorkArea.Bottom));
+        return new Rect(topLeft, bottomRight);
     }
 
     /// <summary>
@@ -79,4 +109,60 @@ public partial class FloatingMainWindow : Window
     {
         System.Windows.Application.Current.Shutdown();
     }
+
+    private const uint MonitorDefaultToNearest = 2;
+
+    [DllImport("user32.dll")]
+    private static extern nint MonitorFromWindow(nint windowHandle, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(nint monitor, ref MonitorInfo monitorInfo);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MonitorInfo
+    {
+        public int Size;
+        public NativeRect MonitorArea;
+        public NativeRect WorkArea;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+}
+
+/// <summary>合约候选弹层相对搜索框的纯定位算法。</summary>
+internal static class SearchPopupPlacement
+{
+    internal static Point Calculate(Size popupSize, Rect targetBounds, Rect workArea, double gap = 4)
+    {
+        var availableBelow = workArea.Bottom - targetBounds.Bottom;
+        var availableAbove = targetBounds.Top - workArea.Top;
+        var openBelow = availableBelow >= popupSize.Height + gap || availableBelow >= availableAbove;
+
+        // 搜索框位于浮动栏右侧，默认让宽弹层的右边缘与输入框右边缘对齐。
+        var preferredX = targetBounds.Width - popupSize.Width;
+        var preferredY = openBelow
+            ? targetBounds.Height + gap
+            : -popupSize.Height - gap;
+
+        var minX = workArea.Left - targetBounds.Left;
+        var maxX = workArea.Right - targetBounds.Left - popupSize.Width;
+        var minY = workArea.Top - targetBounds.Top;
+        var maxY = workArea.Bottom - targetBounds.Top - popupSize.Height;
+
+        return new Point(
+            ClampToWorkArea(preferredX, minX, maxX),
+            ClampToWorkArea(preferredY, minY, maxY));
+    }
+
+    private static double ClampToWorkArea(double value, double minimum, double maximum) =>
+        minimum <= maximum ? Math.Clamp(value, minimum, maximum) : minimum;
 }

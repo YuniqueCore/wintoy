@@ -236,12 +236,14 @@ public class SettingsViewModelTests
     }
 
     [Fact]
-    public void Save_disabled_while_loading()
+    public async Task Save_disabled_while_loading()
     {
         var vm = CreateVm();
 
-        // 等到 Loaded 状态（构造期间是 Loading 短暂窗口，竞态难测）
-        // 然后用反射强制设回 Loading 以验证 CanExecute 守门
+        // 等待构造期间启动的自动加载结束，避免后台加载在断言前覆盖下面设定的 Loading 状态。
+        await vm.LoadAsync();
+
+        // 用反射强制设回 Loading，以验证 CanExecute 守门。
         var prop = typeof(SettingsViewModel).GetProperty(nameof(SettingsViewModel.State))!;
         prop.SetValue(vm, new ConfigEditorState.Loading());
 

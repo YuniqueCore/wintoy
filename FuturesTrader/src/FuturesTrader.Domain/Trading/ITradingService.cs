@@ -4,7 +4,7 @@ namespace FuturesTrader.Domain.Trading;
 
 /// <summary>
 /// 交易服务抽象：统一 Mock（<c>MockTradingService</c>）与 CTP
-/// （<c>CtpTradingService</c>，直连 <c>thosttraderapi_se.dll</c> 6.7.11）两套实现。
+/// （<c>CtpTradingService</c>，直连 <c>thosttraderapi_se.dll</c> 6.7.13）两套实现。
 /// 实现 MUST 线程安全：CTP 回调在工作线程触发，订阅者（VM）需自行 Dispatcher 切回 UI 线程。
 /// <para>
 /// 认证流程（CTP 独有）：OnFrontConnected → ReqAuthenticate(BrokerID/UserID/AppID/AuthCode) →

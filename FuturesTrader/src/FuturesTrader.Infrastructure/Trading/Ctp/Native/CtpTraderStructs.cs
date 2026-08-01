@@ -37,7 +37,7 @@ public struct CThostFtdcReqAuthenticateField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
     public string AuthCode;
 
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 33)]
     public string AppID;
 }
 
@@ -55,8 +55,12 @@ public struct CThostFtdcInputOrderField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
     public string InvestorID;
 
+    /// <summary>
+    /// 6.7.13 为保持旧 ABI 留下的 OldInstrumentIDType[31] 占位。真实 InstrumentID 位于尾部，
+    /// 不能把合约号写到这里，否则 CTP 会把它当作保留字段而忽略。
+    /// </summary>
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
-    public string InstrumentID;
+    public string reserve1;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
     public string OrderRef;
@@ -135,17 +139,32 @@ public struct CThostFtdcInputOrderField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
     public string ClientID;
 
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
-    public string IPAddress;
+    /// <summary>6.7.13 保留的 OldIPAddressType[16] 占位。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+    public string reserve2;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 21)]
     public string MacAddress;
+
+    /// <summary>真实合约代码（6.7.13 尾部字段，InstrumentIDType[81]）。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string InstrumentID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 33)]
+    public string IPAddress;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
+    public string OrderMemo;
+
+    /// <summary>会话请求序号，由 CTP API 自动维护。</summary>
+    public int SessionReqSeq;
 }
 
 /// <summary>
 /// 报单回报结构，对齐 <c>CThostFtdcOrderField</c>（CTP 6.7.x）。
 /// 用于 <c>OnRtnOrder</c> 回调。每次报单状态变化推送一个完整快照。
-/// 字段顺序严格按 <c>ThostFtdcUserApiStruct.h</c>，含 63 个字段（6.7.x 含 IP/Mac 扩展）。
+/// 字段顺序严格按 <c>ThostFtdcUserApiStruct.h</c>，包含 6.7.13 的 reserve、IP/Mac、
+/// 尾部 InstrumentID/ExchangeInstID/OrderMemo/SessionReqSeq 扩展字段。
 /// </summary>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
 public struct CThostFtdcOrderField
@@ -156,8 +175,9 @@ public struct CThostFtdcOrderField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
     public string InvestorID;
 
+    /// <summary>6.7.13 OldInstrumentIDType[31] 保留字段；真实 InstrumentID 在尾部。</summary>
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
-    public string InstrumentID;
+    public string reserve1;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
     public string OrderRef;
@@ -205,10 +225,11 @@ public struct CThostFtdcOrderField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
     public string ClientID;
 
+    /// <summary>6.7.13 OldExchangeInstIDType[31] 保留字段；真实 ExchangeInstID 在尾部。</summary>
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
-    public string ExchangeInstID;
+    public string reserve2;
 
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 21)]
     public string TraderID;
 
     public int InstallID;
@@ -248,7 +269,7 @@ public struct CThostFtdcOrderField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 9)]
     public string CancelTime;
 
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 21)]
     public string ActiveTraderID;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
@@ -289,11 +310,29 @@ public struct CThostFtdcOrderField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 4)]
     public string CurrencyID;
 
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
-    public string IPAddress;
+    /// <summary>6.7.13 OldIPAddressType[16] 保留字段。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+    public string reserve3;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 21)]
     public string MacAddress;
+
+    /// <summary>真实合约代码（InstrumentIDType[81]）。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string InstrumentID;
+
+    /// <summary>交易所合约代码（ExchangeInstIDType[81]）。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string ExchangeInstID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 33)]
+    public string IPAddress;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
+    public string OrderMemo;
+
+    /// <summary>会话请求序号，由 CTP API 自动维护。</summary>
+    public int SessionReqSeq;
 }
 
 /// <summary>
@@ -309,8 +348,9 @@ public struct CThostFtdcTradeField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
     public string InvestorID;
 
+    /// <summary>6.7.13 OldInstrumentIDType[31] 保留字段；真实 InstrumentID 在尾部。</summary>
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
-    public string InstrumentID;
+    public string reserve1;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
     public string OrderRef;
@@ -338,8 +378,9 @@ public struct CThostFtdcTradeField
 
     public byte TradingRole;
 
+    /// <summary>6.7.13 OldExchangeInstIDType[31] 保留字段；真实 ExchangeInstID 在尾部。</summary>
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
-    public string ExchangeInstID;
+    public string reserve2;
 
     /// <summary>开平标志：'0'=Open '1'=Close '3'=CloseToday '4'=CloseYesterday。</summary>
     public byte OffsetFlag;
@@ -362,7 +403,7 @@ public struct CThostFtdcTradeField
     public byte TradeType;
     public byte PriceSource;
 
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 21)]
     public string TraderID;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
@@ -385,6 +426,14 @@ public struct CThostFtdcTradeField
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
     public string InvestUnitID;
+
+    /// <summary>真实合约代码（InstrumentIDType[81]）。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string InstrumentID;
+
+    /// <summary>交易所合约代码（ExchangeInstIDType[81]）。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string ExchangeInstID;
 }
 
 /// <summary>
@@ -430,17 +479,32 @@ public struct CThostFtdcInputOrderActionField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
     public string UserID;
 
+    /// <summary>6.7.13 OldInstrumentIDType[31] 保留字段；真实 InstrumentID 在尾部。</summary>
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 31)]
-    public string InstrumentID;
+    public string reserve1;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
     public string InvestUnitID;
 
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
-    public string IPAddress;
+    /// <summary>6.7.13 OldIPAddressType[16] 保留字段。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+    public string reserve2;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 21)]
     public string MacAddress;
+
+    /// <summary>真实合约代码（InstrumentIDType[81]）。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 81)]
+    public string InstrumentID;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 33)]
+    public string IPAddress;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 13)]
+    public string OrderMemo;
+
+    /// <summary>会话请求序号，由 CTP API 自动维护。</summary>
+    public int SessionReqSeq;
 }
 
 /// <summary>

@@ -12,9 +12,11 @@ namespace FuturesTrader.Infrastructure.Trading.Ctp.Native;
 /// → <c>(const char* flowPath, bool bIsProductionMode) -&gt; CThostFtdcTraderApi*</c>（2 参数，与 MdApi 的 4 参数不同）。
 /// </para>
 /// <para>
-/// <b>TraderApi vtable 布局</b>（6.7.11 <c>ThostFtdcTraderApi.h</c>，无 virtual 析构 → 无析构槽）：
-/// 索引推算：vnpy_ctp <c>ctp_td_header_function.h</c> req 函数 0-based 顺序 + 固定偏移 15
-/// （已用 ReqOrderInsert=26/ReqOrderAction=29/ReqSettlementInfoConfirm=31 三点验证偏移恒为 15）。
+/// <b>TraderApi vtable 布局</b>（6.7.13 <c>ThostFtdcTraderApi.h</c>，无 virtual 析构 → 无析构槽）：
+/// 6.7.13 仍保留 [4] <c>GetFrontInfo</c>，因此本类实际调用的 API 槽位与 6.7.11 一致；
+/// 不能因为 SPI 新增回调而把 API 槽位整体前移。该版本的 ABI 变化是 [9]
+/// <c>SubscribePrivateTopic</c> 新增 <c>nSeqNo</c> 参数，SPI 在认证回调后新增
+/// <c>OnRtnPrivateSeqNo</c>（见 <see cref="SpiVtable"/>）。
 /// <code>
 /// [0]  Release()
 /// [1]  Init()
@@ -25,7 +27,7 @@ namespace FuturesTrader.Infrastructure.Trading.Ctp.Native;
 /// [6]  RegisterNameServer(char*)
 /// [7]  RegisterFensUserInfo(...)
 /// [8]  RegisterSpi(CThostFtdcTraderSpi*)
-/// [9]  SubscribePrivateTopic(THOST_TE_RESUME_TYPE)
+/// [9]  SubscribePrivateTopic(THOST_TE_RESUME_TYPE, int nSeqNo = 1)
 /// [10] SubscribePublicTopic(THOST_TE_RESUME_TYPE)
 /// [11] ReqAuthenticate(CThostFtdcReqAuthenticateField*, int)
 /// [12-15] RegisterUserSystemInfo / SubmitUserSystemInfo / RegisterWechat* / SubmitWechat*
@@ -109,16 +111,17 @@ internal static class ThostTraderApiNative
         public const int ReqOrderInsert = 26;
         public const int ReqOrderAction = 29;
         public const int ReqSettlementInfoConfirm = 31;
-        // 查询家族（索引 = vnpy req 0-based + 偏移 15，见类注释推算依据）
+        // 查询家族（6.7.13 与 6.7.11 的既有槽位一致）
         public const int ReqQryInvestorPosition = 45;
         public const int ReqQryTradingAccount = 46;
-        public const int ReqQryUserSession = 51;   // 6.7.11 新增
+        public const int ReqQryUserSession = 51;
         public const int ReqQryInstrument = 54;
     }
 
     // ===== CThostFtdcTraderSpi vtable 索引（用于 SpiBridge 构造伪 C++ 对象） =====
-    // 6.7.11 共 164 槽（0-163），无 virtual 析构。来源：vnpy_ctp ctp_td_header_define.h（main 分支）。
-    // 6.7.11 在槽位 36 新增 OnRspQryUserSession，导致 [36-163] 所有索引相比 6.7.7 +1。
+    // 6.7.13 共 178 槽（0-177），无 virtual 析构。
+    // 该版本在 OnRspAuthenticate 后的 [4] 新增 OnRtnPrivateSeqNo，故所有旧 [4-163]
+    // SPI 槽均后移一位；末尾另增加短信、价差申请和套保确认相关回调 [165-177]。
 
     public static class SpiVtable
     {
@@ -126,31 +129,33 @@ internal static class ThostTraderApiNative
         public const int OnFrontDisconnected = 1;
         public const int OnHeartBeatWarning = 2;
         public const int OnRspAuthenticate = 3;
-        public const int OnRspUserLogin = 4;
-        // [5-10] OnRspUserLogout / OnRspUserPasswordUpdate / ... / OnRspGenUserText（5参 Rsp 模式）
-        public const int OnRspOrderInsert = 11;
-        // [12-13] OnRspParkedOrderInsert / OnRspParkedOrderAction
-        public const int OnRspOrderAction = 14;
-        // [15] OnRspQryMaxOrderVolume
-        public const int OnRspSettlementInfoConfirm = 16;
-        // [17-29] OnRspRemoveParkedOrder / ... / OnRspQryTrade（5参 Rsp 模式）
-        public const int OnRspQryInvestorPosition = 30;   // 持仓查询回调
-        public const int OnRspQryTradingAccount = 31;     // 资金账户查询回调
-        // [32-35] OnRspQryInvestor / OnRspQryTradingCode / OnRspQryInstrumentMarginRate / OnRspQryInstrumentCommissionRate
-        public const int OnRspQryUserSession = 36;        // 6.7.11 新增（Noop 占位，保持对齐）
-        // [37-38] OnRspQryExchange / OnRspQryProduct
-        public const int OnRspQryInstrument = 39;         // 合约元数据查询回调
-        // [40-72] OnRspQryDepthMarketData / ... / OnRspQryTransferSerial（5参 Rsp 模式）
-        public const int OnRspQryAccountregister = 73;    // 原 72，6.7.11 +1
-        public const int OnRspError = 74;                 // 原 73，6.7.11 +1
-        public const int OnRtnOrder = 75;                 // 原 74
-        public const int OnRtnTrade = 76;                 // 原 75
-        public const int OnErrRtnOrderInsert = 77;        // 原 76
-        public const int OnErrRtnOrderAction = 78;        // 原 77
-        // [79-82] OnRtnInstrumentStatus / OnRtnBulletin / OnRtnTradingNotice / OnRtnErrorConditionalOrder（2参 Rtn 模式）
-        // [83-163] 6.7.x 扩展槽（SPBM/RCAMS/RULE/OffsetSetting 等，均 Noop 占位避免越界）
-        /// <summary>vtable 槽位数（含未使用槽），用于分配函数指针数组大小。6.7.11 最大槽位 163。</summary>
-        public const int SlotCount = 164;
+        public const int OnRtnPrivateSeqNo = 4;
+        public const int OnRspUserLogin = 5;
+        // [6-11] OnRspUserLogout / OnRspUserPasswordUpdate / ... / OnRspGenUserText（5参 Rsp 模式）
+        public const int OnRspOrderInsert = 12;
+        // [13-14] OnRspParkedOrderInsert / OnRspParkedOrderAction
+        public const int OnRspOrderAction = 15;
+        // [16] OnRspQryMaxOrderVolume
+        public const int OnRspSettlementInfoConfirm = 17;
+        // [18-30] OnRspRemoveParkedOrder / ... / OnRspQryTrade（5参 Rsp 模式）
+        public const int OnRspQryInvestorPosition = 31;   // 持仓查询回调
+        public const int OnRspQryTradingAccount = 32;     // 资金账户查询回调
+        // [33-36] OnRspQryInvestor / OnRspQryTradingCode / OnRspQryInstrumentMarginRate / OnRspQryInstrumentCommissionRate
+        public const int OnRspQryUserSession = 37;        // Noop 占位，保持对齐
+        // [38-39] OnRspQryExchange / OnRspQryProduct
+        public const int OnRspQryInstrument = 40;         // 合约元数据查询回调
+        // [41-74] OnRspQryDepthMarketData / ... / OnRspQryAccountregister（5参 Rsp 模式）
+        public const int OnRspQryAccountregister = 74;
+        public const int OnRspError = 75;
+        public const int OnRtnOrder = 76;
+        public const int OnRtnTrade = 77;
+        public const int OnErrRtnOrderInsert = 78;
+        public const int OnErrRtnOrderAction = 79;
+        // [80-83] OnRtnInstrumentStatus / OnRtnBulletin / OnRtnTradingNotice / OnRtnErrorConditionalOrder（2参 Rtn 模式）
+        // [84-164] 既有扩展槽（SPBM/RCAMS/RULE/OffsetSetting 等，均 Noop 占位避免越界）
+        // [165-177] 6.7.13 新增短信、价差申请和套保确认回调。
+        /// <summary>vtable 槽位数（含未使用槽），用于分配函数指针数组大小。6.7.13 最大槽位 177。</summary>
+        public const int SlotCount = 178;
     }
 
     // ===== 流订阅重传方式（THOST_TE_RESUME_TYPE） =====
@@ -180,7 +185,10 @@ internal static class ThostTraderApiNative
     public delegate void RegisterSpiDelegate(IntPtr thisPtr, IntPtr pSpi);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
-    public delegate void SubscribeTopicDelegate(IntPtr thisPtr, int nResumeType);
+    public delegate void SubscribePrivateTopicDelegate(IntPtr thisPtr, int nResumeType, int nSeqNo);
+
+    [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
+    public delegate void SubscribePublicTopicDelegate(IntPtr thisPtr, int nResumeType);
 
     [UnmanagedFunctionPointer(CallingConvention.ThisCall)]
     public delegate int ReqAuthenticateDelegate(IntPtr thisPtr, IntPtr pReqAuthenticateField, int nRequestID);
@@ -239,11 +247,11 @@ internal static class ThostTraderApiNative
     public static void RegisterSpi(IntPtr apiPtr, IntPtr spiPtr) =>
         GetVtableMethod<RegisterSpiDelegate>(apiPtr, ApiVtable.RegisterSpi)(apiPtr, spiPtr);
 
-    public static void SubscribePrivateTopic(IntPtr apiPtr, int resumeType) =>
-        GetVtableMethod<SubscribeTopicDelegate>(apiPtr, ApiVtable.SubscribePrivateTopic)(apiPtr, resumeType);
+    public static void SubscribePrivateTopic(IntPtr apiPtr, int resumeType, int nSeqNo = 1) =>
+        GetVtableMethod<SubscribePrivateTopicDelegate>(apiPtr, ApiVtable.SubscribePrivateTopic)(apiPtr, resumeType, nSeqNo);
 
     public static void SubscribePublicTopic(IntPtr apiPtr, int resumeType) =>
-        GetVtableMethod<SubscribeTopicDelegate>(apiPtr, ApiVtable.SubscribePublicTopic)(apiPtr, resumeType);
+        GetVtableMethod<SubscribePublicTopicDelegate>(apiPtr, ApiVtable.SubscribePublicTopic)(apiPtr, resumeType);
 
     public static int ReqAuthenticate(IntPtr apiPtr, IntPtr pReqAuthenticateField, int nRequestID) =>
         GetVtableMethod<ReqAuthenticateDelegate>(apiPtr, ApiVtable.ReqAuthenticate)(apiPtr, pReqAuthenticateField, nRequestID);

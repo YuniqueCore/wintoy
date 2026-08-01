@@ -8,15 +8,15 @@ namespace FuturesTrader.Presentation.WindowHosting;
 
 /// <summary>
 /// 窗口成组同步协调器：监听同组窗口的 <see cref="Window.LocationChanged"/> / <see cref="Window.SizeChanged"/>，
-/// 节流 16ms（≈60fps）后批量同步其他窗口的位置/高度，实现 0527.exe 的成组拖动/缩放联动。
+/// 防抖 16ms 后读取用户操作窗口的最新最终坐标，批量同步其他窗口的位置/高度。
 /// <para>
 /// <b>防反馈环</b>：同步赋值时置 <c>_isUpdating=true</c>，跳过回调，避免 A→B→A 死循环。
 /// </para>
 /// <para>
 /// <b>同步策略</b>：
 /// <list type="bullet">
-///   <item>拖动：同组窗口做相同位移（delta），保持相对排列不变</item>
-///   <item>缩放：高度全组同步，宽度保持各窗独立；每次尺寸变化后重排横向边界，防止重叠</item>
+///   <item>拖动：以源窗口为锚点，全部窗口 Top 对齐，按注册顺序向锚点两侧紧密排列</item>
+///   <item>缩放：高度全组同步，宽度保持各窗独立；随后按实际宽度重新排列，保证不重叠</item>
 /// </list>
 /// </para>
 /// <para>
@@ -30,6 +30,9 @@ public sealed class GroupSynchronizationCoordinator
 
     /// <summary>同组窗口注册表：groupId → 窗口集合。同组窗口联动。</summary>
     private readonly Dictionary<int, List<TrackedWindow>> _groups = new();
+
+    /// <summary>每组最多一个待执行同步；连续拖动只保留最新锚点坐标，避免旧 delta 定时器乱序回放。</summary>
+    private readonly Dictionary<int, PendingSync> _pendingSyncs = new();
 
     /// <summary>防反馈环标志：批量同步赋值期间为 true，跳过回调。</summary>
     private bool _isUpdating;
@@ -71,17 +74,22 @@ public sealed class GroupSynchronizationCoordinator
         if (!_groups.TryGetValue(groupId, out var list)) return;
         list.RemoveAll(t => t.Window == window);
         if (list.Count == 0)
+        {
             _groups.Remove(groupId);
+            if (_pendingSyncs.Remove(groupId, out var pending))
+                pending.Timer.Stop();
+        }
     }
 
     private void OnLocationChanged(TrackedWindow source)
     {
         if (_isUpdating || SyncMode != WindowSyncMode.Grouped) return;
 
-        var delta = new Vector(source.Window.Left - source.LastLeft, source.Window.Top - source.LastTop);
-        if (delta.Length < 0.5) return;
+        var leftChanged = Math.Abs(source.Window.Left - source.LastLeft) >= 0.5;
+        var topChanged = Math.Abs(source.Window.Top - source.LastTop) >= 0.5;
+        if (!leftChanged && !topChanged) return;
 
-        ScheduleSync(source, delta, syncHeight: false);
+        ScheduleSync(source, syncHeight: false);
     }
 
     private void OnSizeChanged(TrackedWindow source)
@@ -93,56 +101,73 @@ public sealed class GroupSynchronizationCoordinator
         if (Math.Abs(heightDelta) < 0.5 && Math.Abs(widthDelta) < 0.5) return;
 
         // 高度同步，宽度可不同，但之后会按实际宽度重新贴边。
-        ScheduleSync(source, new Vector(0, 0), syncHeight: true);
+        ScheduleSync(source, syncHeight: true);
     }
 
-    private void ScheduleSync(TrackedWindow source, Vector delta, bool syncHeight)
+    private void ScheduleSync(TrackedWindow source, bool syncHeight)
     {
-        // 节流：用 DispatcherTimer 16ms 合并高频事件，避免逐帧同步抖动
+        if (_pendingSyncs.TryGetValue(source.GroupId, out var existing))
+        {
+            existing.Source = source;
+            existing.SyncHeight |= syncHeight;
+            existing.Timer.Stop();
+            existing.Timer.Start();
+            return;
+        }
+
         var timer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(16)
         };
+        var pending = new PendingSync(timer, source, syncHeight);
         timer.Tick += (_, _) =>
         {
             timer.Stop();
-            ApplySync(source, delta, syncHeight);
+            _pendingSyncs.Remove(source.GroupId);
+            ApplySync(pending.Source, pending.SyncHeight);
         };
+        _pendingSyncs[source.GroupId] = pending;
         timer.Start();
     }
 
-    private void ApplySync(TrackedWindow source, Vector delta, bool syncHeight)
+    private void ApplySync(TrackedWindow source, bool syncHeight)
     {
+        if (SyncMode != WindowSyncMode.Grouped) return;
         if (!_groups.TryGetValue(source.GroupId, out var list)) return;
+
+        var trackedWindows = list.Where(tracked => tracked.Window.IsLoaded).ToArray();
+        var sourceIndex = Array.IndexOf(trackedWindows, source);
+        if (sourceIndex < 0) return;
 
         _isUpdating = true;
         try
         {
-            foreach (var tracked in list)
+            if (syncHeight)
             {
-                if (tracked.Window == source.Window) continue;
-                if (!tracked.Window.IsLoaded) continue;
-
-                // 位移同步（拖动联动）
-                if (Math.Abs(delta.X) > 0.5 || Math.Abs(delta.Y) > 0.5)
-                {
-                    tracked.Window.Left += delta.X;
-                    tracked.Window.Top += delta.Y;
-                }
-
-                // 高度同步（缩放联动）
-                if (syncHeight)
-                {
-                    tracked.Window.Height = source.Window.ActualHeight;
-                }
-
-                tracked.UpdatePosition();
+                var sourceHeight = ResolveHeight(source.Window);
+                foreach (var tracked in trackedWindows)
+                    tracked.Window.Height = sourceHeight;
             }
 
-            PackHorizontally(list);
+            var bounds = trackedWindows
+                .Select(tracked => new WindowBounds(
+                    tracked.Window.Left,
+                    tracked.Window.Top,
+                    ResolveWidth(tracked.Window),
+                    ResolveHeight(tracked.Window)))
+                .ToArray();
+            var placements = CalculateAlignedLayout(
+                bounds,
+                sourceIndex,
+                _uiOptions.CompactSpacing,
+                SystemParameters.WorkArea);
 
-            // 更新源窗口的上次位置基线
-            source.UpdatePosition();
+            for (var index = 0; index < trackedWindows.Length; index++)
+            {
+                trackedWindows[index].Window.Left = placements[index].Left;
+                trackedWindows[index].Window.Top = placements[index].Top;
+                trackedWindows[index].UpdatePosition();
+            }
         }
         catch (Exception ex)
         {
@@ -154,24 +179,66 @@ public sealed class GroupSynchronizationCoordinator
         }
     }
 
-    /// <summary>按当前左坐标重新贴边，确保宽度变化或恢复窗口后不会重叠。</summary>
-    private void PackHorizontally(IEnumerable<TrackedWindow> trackedWindows)
+    /// <summary>
+    /// 以锚点窗口当前 Left/Top 计算整组最终位置。锚点两侧按顺序紧贴；整行能放入工作区时整体钳制，
+    /// 既不破坏相邻窗口间距，也不会为了对齐而制造重叠。
+    /// </summary>
+    internal static IReadOnlyList<WindowPlacement> CalculateAlignedLayout(
+        IReadOnlyList<WindowBounds> windows,
+        int anchorIndex,
+        double spacing,
+        Rect workArea)
     {
-        var windows = trackedWindows
-            .Where(tracked => tracked.Window.IsLoaded)
-            .Select(tracked => tracked.Window)
-            .OrderBy(window => window.Left)
-            .ToArray();
-        for (var index = 1; index < windows.Length; index++)
+        ArgumentNullException.ThrowIfNull(windows);
+        if (windows.Count == 0) return Array.Empty<WindowPlacement>();
+        if (anchorIndex < 0 || anchorIndex >= windows.Count)
+            throw new ArgumentOutOfRangeException(nameof(anchorIndex));
+
+        spacing = Math.Max(0, spacing);
+        var widths = windows.Select(window => Math.Max(1, window.Width)).ToArray();
+        var lefts = new double[windows.Count];
+        lefts[anchorIndex] = windows[anchorIndex].Left;
+
+        for (var index = anchorIndex - 1; index >= 0; index--)
+            lefts[index] = lefts[index + 1] - spacing - widths[index];
+        for (var index = anchorIndex + 1; index < windows.Count; index++)
+            lefts[index] = lefts[index - 1] + widths[index - 1] + spacing;
+
+        if (!workArea.IsEmpty && workArea.Width > 0)
         {
-            var previous = windows[index - 1];
-            var current = windows[index];
-            var previousWidth = previous.ActualWidth > 0 ? previous.ActualWidth : previous.Width;
-            var expectedLeft = previous.Left + previousWidth + _uiOptions.CompactSpacing;
-            if (Math.Abs(current.Left - expectedLeft) > 0.5)
-                current.Left = expectedLeft;
+            var rowWidth = widths.Sum() + spacing * Math.Max(0, windows.Count - 1);
+            var rowRight = lefts[^1] + widths[^1];
+            var shift = rowWidth > workArea.Width
+                ? workArea.Left - lefts[0]
+                : lefts[0] < workArea.Left
+                    ? workArea.Left - lefts[0]
+                    : rowRight > workArea.Right
+                        ? workArea.Right - rowRight
+                        : 0;
+            if (Math.Abs(shift) >= 0.5)
+            {
+                for (var index = 0; index < lefts.Length; index++)
+                    lefts[index] += shift;
+            }
         }
+
+        var maxHeight = windows.Max(window => Math.Max(1, window.Height));
+        var targetTop = windows[anchorIndex].Top;
+        if (!workArea.IsEmpty && workArea.Height > 0)
+            targetTop = Math.Clamp(targetTop, workArea.Top, Math.Max(workArea.Top, workArea.Bottom - maxHeight));
+
+        return lefts.Select(left => new WindowPlacement(left, targetTop)).ToArray();
     }
+
+    private static double ResolveWidth(Window window) =>
+        window.ActualWidth > 0 && double.IsFinite(window.ActualWidth)
+            ? window.ActualWidth
+            : Math.Max(1, window.Width);
+
+    private static double ResolveHeight(Window window) =>
+        window.ActualHeight > 0 && double.IsFinite(window.ActualHeight)
+            ? window.ActualHeight
+            : Math.Max(1, window.Height);
 
     /// <summary>获取指定分组已注册的窗口（供 WindowManager 持久化位置）。</summary>
     public IReadOnlyList<Window> GetWindowsInGroup(int groupId)
@@ -199,4 +266,15 @@ public sealed class GroupSynchronizationCoordinator
             LastHeight = Window.ActualHeight;
         }
     }
+
+    private sealed class PendingSync(DispatcherTimer timer, TrackedWindow source, bool syncHeight)
+    {
+        public DispatcherTimer Timer { get; } = timer;
+        public TrackedWindow Source { get; set; } = source;
+        public bool SyncHeight { get; set; } = syncHeight;
+    }
+
+    internal readonly record struct WindowBounds(double Left, double Top, double Width, double Height);
+
+    internal readonly record struct WindowPlacement(double Left, double Top);
 }

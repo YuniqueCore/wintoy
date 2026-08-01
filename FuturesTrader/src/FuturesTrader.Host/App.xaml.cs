@@ -175,7 +175,10 @@ public partial class App : System.Windows.Application
                 services.Configure<SoundOptions>(ctx.Configuration.GetSection("Sound"));
                 services.AddSingleton<ISoundService, SoundService>();
                 services.AddSingleton<IKeyboardOperationService, KeyboardOperationService>();
-                services.AddSingleton<ITradingSessionChecker, TradingSessionChecker>();
+                services.AddSingleton<ITradingSessionChecker>(sp =>
+                    sp.GetRequiredService<IOptions<TradingOptions>>().Value.Provider == TradingProvider.Mock
+                        ? new AlwaysAllowTradingSessionChecker()
+                        : new TradingSessionChecker());
                 services.AddSingleton<ISpreadCalculator, SpreadCalculator>();
                 services.AddTransient<IOrderValidator, OrderValidator>();
 

@@ -119,6 +119,10 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial PriceLadder? PriceLadder { get; private set; }
 
+    /// <summary>是否显示无人报价价位行。只影响呈现，不改变价格梯交易侧和下单规则。</summary>
+    [ObservableProperty]
+    public partial bool ShowWhiteGrid { get; set; } = true;
+
     [ObservableProperty]
     public partial decimal OpenPrice { get; private set; }
 
@@ -358,7 +362,14 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             }
 
             var volume = mouseButton == MouseQuantityButton.Left ? ValLeft : ValRight;
-            if (volume <= 0) return;
+            if (volume <= 0)
+            {
+                Order.ReportPriceLadderOrderBlocked(
+                    mouseButton == MouseQuantityButton.Left
+                        ? "左键挂单数量必须大于 0"
+                        : "右键挂单数量必须大于 0");
+                return;
+            }
             var direction = _priceLadderDirectionMap.Resolve(side);
             await Order.PlacePriceLadderOrderAsync(
                 direction,
@@ -375,6 +386,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            Order.ReportPriceLadderOrderFailure(ex.Message);
             _logger.LogError(ex, "价格点击下单失败 {Instrument}", InstrumentCode);
         }
     }
@@ -438,6 +450,8 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         try
         {
+            // ConnectionStream 是热流；窗口可能在服务已经连接后才创建，必须先读取当前状态。
+            ConnectionState = StateToText(_marketData.CurrentState);
             // 连接状态流 → ConnectionState 字符串（UI 反馈）
             var connSub = _marketData.ConnectionStream.Subscribe(
                 state => MarshalToUi(() => ConnectionState = StateToText(state)),
@@ -552,6 +566,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             if (_marketData.CurrentState is not Domain.MarketData.ConnectionState.Connected)
                 await _marketData.ConnectAsync();
             await _marketData.SubscribeAsync(new[] { InstrumentCode });
+            MarshalToUi(() => ConnectionState = StateToText(_marketData.CurrentState), immediateIfNoDispatcher: true);
             _logger.LogInformation("已订阅 {Instrument} 行情", InstrumentCode);
         }
         catch (Exception ex)
@@ -612,7 +627,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     /// 聚合当前活跃报单为「价格 → 数量」字典（按 PriceTick 对齐 key）。
     /// 同一价位上多笔挂单合并为一格显示数。
     /// </summary>
-    private IReadOnlyDictionary<decimal, int> BuildPendingByPrice()
+    internal IReadOnlyDictionary<decimal, int> BuildPendingByPrice()
     {
         if (Order is null) return new Dictionary<decimal, int>();
         var snapshot = Order.ActiveOrders;
@@ -624,7 +639,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             var alignedPrice = _priceTick > 0
                 ? Math.Round(info.Price / _priceTick) * _priceTick
                 : info.Price;
-            dict[alignedPrice] = dict.GetValueOrDefault(alignedPrice) + 1;
+            dict[alignedPrice] = dict.GetValueOrDefault(alignedPrice) + Math.Max(0, info.RemainingVolume);
         }
         return dict;
     }

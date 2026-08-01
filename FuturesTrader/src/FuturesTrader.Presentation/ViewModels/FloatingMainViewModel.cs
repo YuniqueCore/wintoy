@@ -135,8 +135,8 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     /// <summary>标尺开关（显示价格标尺）。</summary>
     [ObservableProperty] private bool _showRuler = true;
 
-    /// <summary>浮动栏白格显示偏好。CBBGDS 的全局传播尚无已证实调用链，故不以该值改写合约窗下单限制。</summary>
-    [ObservableProperty] private bool _showWhiteGrid;
+    /// <summary>浮动栏白格显示偏好：默认显示价格梯无人报价行，不改写每窗 CBBGDS 风控字段。</summary>
+    [ObservableProperty] private bool _showWhiteGrid = true;
 
     /// <summary>两排布局开关（价格梯子双排显示）。</summary>
     [ObservableProperty] private bool _twoRowLayout;
@@ -152,6 +152,10 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     partial void OnAbModeChanged(FloatingAbMode value) =>
         _tradingWindowInteraction.ApplyOrderPlacementModeToOpenWindows(
             value == FloatingAbMode.A ? OrderPlacementMode.ReplaceSameDirection : OrderPlacementMode.Append);
+
+    /// <summary>白格只控制无人报价行可见性，并同步到当前存活和随后新建的合约窗口。</summary>
+    partial void OnShowWhiteGridChanged(bool value) =>
+        _tradingWindowInteraction.ApplyWhiteGridVisibilityToOpenWindows(value);
 
     /// <summary>窗口同步模式（成组联动 / 完全独立）。</summary>
     [ObservableProperty] private WindowSyncMode _syncMode = WindowSyncMode.Grouped;
@@ -190,7 +194,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     /// <summary>合约搜索文本（auto-complete-input 输入）。</summary>
     [ObservableProperty] private string _searchText = string.Empty;
 
-    /// <summary>搜索过滤后的合约列表（autocomplete 下拉，最多 20 条）。</summary>
+    /// <summary>搜索过滤后的合约列表（autocomplete 下拉，最多 50 条）。</summary>
     public ObservableCollection<Instrument> FilteredInstruments { get; } = new();
 
     /// <summary>autocomplete Popup 是否打开。</summary>
@@ -279,7 +283,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
         await _session.LogoutAsync();
     }
 
-    /// <summary>SearchText 变更：过滤合约列表（按代码或名称模糊匹配，最多 20 条）。</summary>
+    /// <summary>SearchText 变更：过滤合约列表（按代码或名称模糊匹配，最多 50 条）。</summary>
     partial void OnSearchTextChanged(string value)
     {
         FilteredInstruments.Clear();
@@ -288,13 +292,41 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
             IsSearchPopupOpen = false;
             return;
         }
-        var matches = _allInstruments
-            .Where(i => i.InstrumentId.Contains(value, StringComparison.OrdinalIgnoreCase)
-                     || i.Name.Contains(value, StringComparison.OrdinalIgnoreCase))
-            .Take(20)
-            .ToArray();
+        var matches = FilterInstruments(_allInstruments, value);
         foreach (var m in matches) FilteredInstruments.Add(m);
         IsSearchPopupOpen = FilteredInstruments.Count > 0;
+    }
+
+    /// <summary>
+    /// 合约候选排序：代码完全匹配、代码前缀、名称前缀、其余包含匹配依次优先；
+    /// 同一合约代码只保留最后一份元数据快照。
+    /// </summary>
+    internal static IReadOnlyList<Instrument> FilterInstruments(
+        IEnumerable<Instrument> instruments,
+        string query,
+        int maxResults = 50)
+    {
+        if (string.IsNullOrWhiteSpace(query) || maxResults <= 0) return [];
+        var normalized = query.Trim();
+
+        static int Rank(Instrument instrument, string value)
+        {
+            if (instrument.InstrumentId.Equals(value, StringComparison.OrdinalIgnoreCase)) return 0;
+            if (instrument.InstrumentId.StartsWith(value, StringComparison.OrdinalIgnoreCase)) return 1;
+            if (instrument.Name.StartsWith(value, StringComparison.OrdinalIgnoreCase)) return 2;
+            return 3;
+        }
+
+        return instruments
+            .Where(instrument =>
+                instrument.InstrumentId.Contains(normalized, StringComparison.OrdinalIgnoreCase)
+                || instrument.Name.Contains(normalized, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(instrument => instrument.InstrumentId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Last())
+            .OrderBy(instrument => Rank(instrument, normalized))
+            .ThenBy(instrument => instrument.InstrumentId, StringComparer.OrdinalIgnoreCase)
+            .Take(maxResults)
+            .ToArray();
     }
 
     /// <summary>autocomplete 选中项变更：触发添加到分组命令后重置选中。</summary>

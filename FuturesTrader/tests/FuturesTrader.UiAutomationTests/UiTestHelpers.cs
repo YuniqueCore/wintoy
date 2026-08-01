@@ -63,7 +63,8 @@ public static class UiTestHelpers
             fixture.Automation.ConditionFactory.ByAutomationId("OpenSettingsButton"))?.AsButton();
 
     /// <summary>
-    /// Click 按钮 + 等待目标窗口出现，失败则重试。先检查窗口是否已存在避免重复点击堆叠多窗口。
+    /// 激活按钮 + 等待目标窗口出现，失败则重试。优先使用 UIA Invoke，
+    /// 仅在控件不支持 Invoke 时回退物理 Click；先检查窗口是否已存在避免重复点击堆叠多窗口。
     /// </summary>
     /// <param name="fixture">Host fixture，提供 <see cref="HostAppFixture.FindWindowByAutomationId"/> 和 <see cref="HostAppFixture.EnsureLoginWindowForeground"/>。</param>
     /// <param name="button">要点击的按钮元素。</param>
@@ -87,9 +88,16 @@ public static class UiTestHelpers
 
         for (var attempt = 0; attempt < maxAttempts; attempt++)
         {
-            // 每次点击前确保前台：WPF UI Button 的 Click 在窗口非前台时可能不触发 Command
+            // Invoke 不依赖物理输入桌面；不支持 Invoke 的控件才需要前台 Click 回退。
             fixture.EnsureLoginWindowForeground();
-            button.Click();
+            try
+            {
+                button.Invoke();
+            }
+            catch
+            {
+                button.Click();
+            }
             var window = fixture.FindWindowByAutomationId(windowAutomationId, TimeSpan.FromSeconds(3));
             if (window is not null) return window;
             // 重试前短暂等待，让 UIA 树有时间刷新

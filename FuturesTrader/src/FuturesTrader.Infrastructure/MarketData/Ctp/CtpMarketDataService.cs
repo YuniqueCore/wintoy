@@ -221,12 +221,19 @@ public sealed class CtpMarketDataService : IMarketDataService
             lock (_apiLock)
             {
                 if (_apiPtr == IntPtr.Zero) return;
-                // MdApi 登录无需 BrokerID/UserID/Password，传全 0 即可
+                // 某些 Md 前置允许匿名登录，但 6.7.13 ReqUserLogin 的 ABI 必须完整，
+                // 且有配置时应传递同一套 BrokerID/UserID/Password，避免前置侧策略差异。
                 int reqId = Interlocked.Increment(ref _requestIdSeq);
                 IntPtr pLogin = Marshal.AllocHGlobal(Marshal.SizeOf<CThostFtdcReqUserLoginField>());
                 try
                 {
-                    Marshal.StructureToPtr(default(CThostFtdcReqUserLoginField), pLogin, fDeleteOld: false);
+                    var field = new CThostFtdcReqUserLoginField
+                    {
+                        BrokerID = _options.BrokerId,
+                        UserID = _options.UserId,
+                        Password = _options.Password
+                    };
+                    Marshal.StructureToPtr(field, pLogin, fDeleteOld: false);
                     int ret = ThostMdApiNative.ReqUserLogin(_apiPtr, pLogin, reqId);
                     if (ret != 0)
                     {

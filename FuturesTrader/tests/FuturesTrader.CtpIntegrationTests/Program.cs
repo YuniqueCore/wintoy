@@ -90,6 +90,7 @@ internal static class Program
     /// </summary>
     private static async Task<int> RunLiveReadOnlyAsync()
     {
+        var stage = "配置校验";
         if (!TryReadCredentials(out var credentials, out var missingVariables))
         {
             Console.Error.WriteLine("只读实测未启动：缺少环境变量。");
@@ -167,6 +168,7 @@ internal static class Program
             using var instrumentSubscription = trading.InstrumentStream.Subscribe(_ =>
                 Interlocked.Exchange(ref instrumentReceived, 1));
 
+            stage = "行情连接与登录";
             await marketData.ConnectAsync(timeout.Token);
             Console.WriteLine(Volatile.Read(ref marketDataConnected) == 1
                 ? "行情认证与登录: 通过"
@@ -175,6 +177,7 @@ internal static class Program
             var instruments = ReadSubscriptionInstruments();
             if (instruments.Count > 0)
             {
+                stage = "行情订阅";
                 await marketData.SubscribeAsync(instruments, timeout.Token);
                 await Task.Delay(TimeSpan.FromSeconds(2), timeout.Token);
                 Console.WriteLine(Volatile.Read(ref marketDataReceived) == 1
@@ -186,16 +189,20 @@ internal static class Program
                 Console.WriteLine($"行情订阅: 跳过（可选环境变量 {SubscriptionVariable} 未配置）");
             }
 
+            stage = "交易认证、登录与结算确认";
             await trading.ConnectAsync(timeout.Token);
             Console.WriteLine(Volatile.Read(ref tradingConnected) == 1
                 ? "交易认证、登录与结算确认: 通过"
                 : "交易认证、登录与结算确认: 已返回但未观察到 Connected 回报");
 
             // 以下全部是 CTP 查询 API。刻意不订阅 OrderStream，也不接触任何报单/撤单入口。
+            stage = "持仓查询";
             await trading.QueryPositionAsync(cancellationToken: timeout.Token);
             await Task.Delay(TimeSpan.FromSeconds(1), timeout.Token);
+            stage = "资金查询";
             await trading.QueryTradingAccountAsync(timeout.Token);
             await Task.Delay(TimeSpan.FromSeconds(1), timeout.Token);
+            stage = "合约查询";
             await trading.QueryInstrumentAsync(cancellationToken: timeout.Token);
             await Task.Delay(TimeSpan.FromSeconds(2), timeout.Token);
 
@@ -217,7 +224,12 @@ internal static class Program
         }
         catch (OperationCanceledException)
         {
-            Console.Error.WriteLine("CTP 只读实测结果: 超时");
+            Console.Error.WriteLine($"CTP 只读实测结果: 超时（阶段：{stage}）");
+            return 1;
+        }
+        catch (TimeoutException)
+        {
+            Console.Error.WriteLine($"CTP 只读实测结果: 超时（阶段：{stage}）");
             return 1;
         }
         catch (Exception ex)

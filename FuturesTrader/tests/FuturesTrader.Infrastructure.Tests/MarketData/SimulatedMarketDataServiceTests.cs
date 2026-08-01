@@ -116,4 +116,64 @@ public class SimulatedMarketDataServiceTests
 
         ticks.Select(t => t.InstrumentId).Should().Contain(new[] { "ag2608", "cu2609", "jd2609" });
     }
+
+    [Fact]
+    public async Task Snapshot_contains_realistic_cumulative_and_order_book_fields()
+    {
+        await using var service = new SimulatedMarketDataService(
+            20,
+            NullLogger<SimulatedMarketDataService>.Instance,
+            randomSeed: 42);
+        await service.ConnectAsync();
+        var firstTick = new TaskCompletionSource<DepthMarketData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var subscription = service.MarketDataStream.Subscribe(tick => firstTick.TrySetResult(tick));
+
+        await service.SubscribeAsync(["au2610"]);
+        var snapshot = await firstTick.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        snapshot.PreSettlementPrice.Should().BePositive();
+        snapshot.OpenPrice.Should().BePositive();
+        snapshot.HighestPrice.Should().BeGreaterThanOrEqualTo(Math.Max(snapshot.OpenPrice, snapshot.LastPrice));
+        snapshot.LowestPrice.Should().BeLessThanOrEqualTo(Math.Min(snapshot.OpenPrice, snapshot.LastPrice));
+        snapshot.UpperLimitPrice.Should().BeGreaterThan(snapshot.LastPrice);
+        snapshot.LowerLimitPrice.Should().BeLessThan(snapshot.LastPrice);
+        snapshot.Volume.Should().BePositive();
+        snapshot.Turnover.Should().BePositive();
+        snapshot.OpenInterest.Should().BePositive();
+        snapshot.BidPrices.Should().BeInDescendingOrder();
+        snapshot.AskPrices.Should().BeInAscendingOrder();
+        snapshot.BidVolumes.Should().OnlyContain(volume => volume > 0);
+        snapshot.AskVolumes.Should().OnlyContain(volume => volume > 0);
+    }
+
+    [Fact]
+    public async Task Same_local_seed_generates_same_first_market_snapshot()
+    {
+        await using var first = new SimulatedMarketDataService(
+            20,
+            NullLogger<SimulatedMarketDataService>.Instance,
+            randomSeed: 8675309);
+        await using var second = new SimulatedMarketDataService(
+            20,
+            NullLogger<SimulatedMarketDataService>.Instance,
+            randomSeed: 8675309);
+        await first.ConnectAsync();
+        await second.ConnectAsync();
+        var firstTick = new TaskCompletionSource<DepthMarketData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondTick = new TaskCompletionSource<DepthMarketData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var firstSubscription = first.MarketDataStream.Subscribe(tick => firstTick.TrySetResult(tick));
+        using var secondSubscription = second.MarketDataStream.Subscribe(tick => secondTick.TrySetResult(tick));
+
+        await first.SubscribeAsync(["ag2608"]);
+        await second.SubscribeAsync(["ag2608"]);
+        var snapshots = await Task.WhenAll(
+            firstTick.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            secondTick.Task.WaitAsync(TimeSpan.FromSeconds(2)));
+
+        snapshots[0].LastPrice.Should().Be(snapshots[1].LastPrice);
+        snapshots[0].Volume.Should().Be(snapshots[1].Volume);
+        snapshots[0].OpenInterest.Should().Be(snapshots[1].OpenInterest);
+        snapshots[0].BidVolumes.Should().Equal(snapshots[1].BidVolumes);
+        snapshots[0].AskVolumes.Should().Equal(snapshots[1].AskVolumes);
+    }
 }

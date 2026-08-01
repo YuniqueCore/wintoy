@@ -65,33 +65,33 @@ public sealed partial class TradingWindow : FluentWindow
     /// 价格梯左键点击 → 按 ValLeft 量挂单。方向由被点击的物理交易侧映射，
     /// 不由红蓝显示区或鼠标按键决定。
     /// </summary>
-    private void OnPriceLeftClicked(object sender, PriceSelectedEventArgs e)
+    private async void OnPriceLeftClicked(object sender, PriceSelectedEventArgs e)
     {
         if (DataContext is TradingViewModel vm)
         {
-            _ = vm.OnPriceLeftClickedAsync(e.Price, e.TradeSide);
+            await vm.OnPriceLeftClickedAsync(e.Price, e.TradeSide);
         }
     }
 
     /// <summary>
     /// 价格梯右键点击 → 按 ValRight 量挂单（新手禁用）。
     /// </summary>
-    private void OnPriceRightClicked(object sender, PriceSelectedEventArgs e)
+    private async void OnPriceRightClicked(object sender, PriceSelectedEventArgs e)
     {
         if (DataContext is TradingViewModel vm)
         {
-            _ = vm.OnPriceRightClickedAsync(e.Price, e.TradeSide);
+            await vm.OnPriceRightClickedAsync(e.Price, e.TradeSide);
         }
     }
 
     /// <summary>
     /// 价格梯挂单格点击 → 撤销该价位所有活动报单（用户点击 PendingOrderCount > 0 的格子）。
     /// </summary>
-    private void OnPendingOrderCancelClicked(object sender, PriceSelectedEventArgs e)
+    private async void OnPendingOrderCancelClicked(object sender, PriceSelectedEventArgs e)
     {
         if (DataContext is TradingViewModel vm)
         {
-            _ = vm.CancelOrdersAtPriceAsync(e.Price);
+            await vm.CancelOrdersAtPriceAsync(e.Price);
         }
     }
 

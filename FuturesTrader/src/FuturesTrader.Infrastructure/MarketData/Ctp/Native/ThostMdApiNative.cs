@@ -195,7 +195,7 @@ internal static class ThostMdApiNative
     public static int UnSubscribeMarketData(IntPtr apiPtr, IntPtr ppInstrumentIDs, int nCount) =>
         GetVtableMethod<SubscribeMarketDataDelegate>(apiPtr, ApiVtable.UnSubscribeMarketData)(apiPtr, ppInstrumentIDs, nCount);
 
-    /// <summary>用户登录请求（MdApi 登录无需认证，传全 0 的 ReqUserLoginField 即可）。</summary>
+    /// <summary>用户登录请求。调用方必须传入完整的 6.7.13 <c>ReqUserLoginField</c> 布局。</summary>
     public static int ReqUserLogin(IntPtr apiPtr, IntPtr pReqUserLoginField, int nRequestID) =>
         GetVtableMethod<ReqUserLoginDelegate>(apiPtr, ApiVtable.ReqUserLogin)(apiPtr, pReqUserLoginField, nRequestID);
 }

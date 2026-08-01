@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using FluentAssertions;
 using FuturesTrader.Infrastructure.MarketData.Ctp;
 using FuturesTrader.Infrastructure.MarketData.Ctp.Native;
+using FuturesTrader.Infrastructure.Trading.Ctp.Native;
 
 namespace FuturesTrader.Infrastructure.Tests.MarketData.Ctp;
 
@@ -85,6 +86,41 @@ public class CtpStructTests
         reqSize.Should().BeGreaterThan(100, "ReqUserLogin 含 9 字符串 + 1 int，至少 100 字节");
         rspSize.Should().BeGreaterThan(80, "RspUserLogin 含 5 字符串 + 2 int，至少 80 字节");
         reqSize.Should().NotBe(rspSize, "请求/响应结构体字段不同，大小必然不同");
+    }
+
+    /// <summary>
+    /// 6.7.13 在登录请求尾部保留 MAC、动态密码、旧 IP、短信码等字段。
+    /// 缺少它们时 CTP 会按头文件大小读取托管分配块之外的数据，造成静默错位或超时。
+    /// </summary>
+    [Fact]
+    public void ReqUserLogin_layout_matches_the_ctp_6_7_13_header()
+    {
+        Marshal.SizeOf<CThostFtdcReqUserLoginField>().Should().Be(280);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.TradingDay)).Should().Be(0);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.BrokerID)).Should().Be(9);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.UserID)).Should().Be(20);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.Password)).Should().Be(36);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.UserProductInfo)).Should().Be(77);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.InterfaceProductInfo)).Should().Be(88);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.ProtocolInfo)).Should().Be(99);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.MacAddress)).Should().Be(110);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.OneTimePassword)).Should().Be(131);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.reserve1)).Should().Be(172);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.LoginRemark)).Should().Be(188);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.ClientIPPort)).Should().Be(224);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.ClientIPAddress)).Should().Be(228);
+        Marshal.OffsetOf<CThostFtdcReqUserLoginField>(nameof(CThostFtdcReqUserLoginField.SMSCode)).Should().Be(261);
+    }
+
+    [Fact]
+    public void ReqAuthenticate_layout_matches_the_ctp_6_7_13_header()
+    {
+        Marshal.SizeOf<CThostFtdcReqAuthenticateField>().Should().Be(88);
+        Marshal.OffsetOf<CThostFtdcReqAuthenticateField>(nameof(CThostFtdcReqAuthenticateField.BrokerID)).Should().Be(0);
+        Marshal.OffsetOf<CThostFtdcReqAuthenticateField>(nameof(CThostFtdcReqAuthenticateField.UserID)).Should().Be(11);
+        Marshal.OffsetOf<CThostFtdcReqAuthenticateField>(nameof(CThostFtdcReqAuthenticateField.UserProductInfo)).Should().Be(27);
+        Marshal.OffsetOf<CThostFtdcReqAuthenticateField>(nameof(CThostFtdcReqAuthenticateField.AuthCode)).Should().Be(38);
+        Marshal.OffsetOf<CThostFtdcReqAuthenticateField>(nameof(CThostFtdcReqAuthenticateField.AppID)).Should().Be(55);
     }
 
     /// <summary>

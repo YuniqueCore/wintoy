@@ -11,40 +11,40 @@ namespace FuturesTrader.Infrastructure.Trading.Ctp;
 /// <b>内存布局</b>（x86，IntPtr.Size=4）：
 /// <code>
 /// 伪 SPI 对象 (4 字节):  [0] = &amp;vtable
-/// vtable (164 * 4 = 656 字节): [0..163] = 函数指针
+/// vtable (178 * 4 = 712 字节): [0..177] = 函数指针
 /// </code>
 /// </para>
 /// <para>
-/// <b>vtable 完整布局</b>（6.7.11 共 164 槽，见 <see cref="ThostTraderApiNative.SpiVtable"/>）：
-/// 6.7.11 在槽位 36 新增 OnRspQryUserSession，导致 [36-163] 相比 6.7.7 全部 +1。
+/// <b>vtable 完整布局</b>（6.7.13 共 178 槽，见 <see cref="ThostTraderApiNative.SpiVtable"/>）：
+/// 6.7.13 在认证响应后新增 <c>OnRtnPrivateSeqNo</c>，导致旧 [4-163] 槽整体后移一位，
+/// 并在末尾追加短信、价差申请和套保确认相关回调。
 /// <code>
 /// [0]  OnFrontConnected          [1]  OnFrontDisconnected       [2]  OnHeartBeatWarning
-/// [3]  OnRspAuthenticate         [4]  OnRspUserLogin
-/// [5-10] OnRspUserLogout..OnRspGenUserText    [11] OnRspOrderInsert
-/// [12-13] OnRspParkedOrder*      [14] OnRspOrderAction           [15] OnRspQryMaxOrderVolume
-/// [16] OnRspSettlementInfoConfirm
-/// [17-29] OnRspRemoveParkedOrder..OnRspQryTrade
-/// [30] OnRspQryInvestorPosition  [31] OnRspQryTradingAccount
-/// [32-35] OnRspQryInvestor..OnRspQryInstrumentCommissionRate
-/// [36] OnRspQryUserSession（6.7.11 新增，Noop 占位）
-/// [37-38] OnRspQryExchange..OnRspQryProduct
-/// [39] OnRspQryInstrument
-/// [40-72] OnRspQryDepthMarketData..OnRspQryTransferSerial
-/// [73] OnRspQryAccountregister   [74] OnRspError                 [75] OnRtnOrder
-/// [76] OnRtnTrade                [77] OnErrRtnOrderInsert        [78] OnErrRtnOrderAction
-/// [79-82] OnRtnInstrumentStatus..OnRtnErrorConditionalOrder
-/// [83-163] 6.7.x 扩展槽（SPBM/RCAMS/RULE/OffsetSetting 等，Noop 占位）
+/// [3]  OnRspAuthenticate         [4]  OnRtnPrivateSeqNo         [5]  OnRspUserLogin
+/// [6-11] OnRspUserLogout..OnRspGenUserText    [12] OnRspOrderInsert
+/// [13-14] OnRspParkedOrder*      [15] OnRspOrderAction           [16] OnRspQryMaxOrderVolume
+/// [17] OnRspSettlementInfoConfirm
+/// [18-30] OnRspRemoveParkedOrder..OnRspQryTrade
+/// [31] OnRspQryInvestorPosition  [32] OnRspQryTradingAccount
+/// [33-36] OnRspQryInvestor..OnRspQryInstrumentCommissionRate
+/// [37] OnRspQryUserSession（Noop 占位）         [38-39] OnRspQryExchange..OnRspQryProduct
+/// [40] OnRspQryInstrument         [41-74] OnRspQryDepthMarketData..OnRspQryAccountregister
+/// [75] OnRspError                 [76] OnRtnOrder                [77] OnRtnTrade
+/// [78] OnErrRtnOrderInsert        [79] OnErrRtnOrderAction
+/// [80-83] OnRtnInstrumentStatus..OnRtnErrorConditionalOrder
+/// [84-164] 既有扩展槽（SPBM/RCAMS/RULE/OffsetSetting 等，Noop 占位）
+/// [165-177] OnRspGenSMSCode / OnRspSpdApply* / OnRspHedgeCfm*（Noop 占位）
 /// </code>
 /// </para>
 /// <para>
 /// <b>签名分类</b>（决定委托类型，x86 __thiscall 栈布局必须精确匹配）：
 /// <list type="bullet">
-///   <item>5 参 Rsp(this,IntPtr,IntPtr,int,bool)：[3-73] 大多数 OnRsp*/OnRspQry*（含查询回调）</item>
-///   <item>4 参 RspError(this,IntPtr,int,bool)：[74] OnRspError</item>
-///   <item>2 参 Rtn(this,IntPtr)：[75-76][79-82] OnRtn*</item>
-///   <item>3 参 ErrRtn(this,IntPtr,IntPtr)：[77-78] OnErrRtn*</item>
+///   <item>5 参 Rsp(this,IntPtr,IntPtr,int,bool)：大多数 OnRsp*/OnRspQry*（含查询回调）</item>
+///   <item>4 参 RspError(this,IntPtr,int,bool)：[75] OnRspError</item>
+///   <item>2 参 Rtn(this,IntPtr)：订单、成交和各类通知回调</item>
+///   <item>3 参 ErrRtn(this,IntPtr,IntPtr)：报单/撤单及扩展错误回调</item>
 ///   <item>1 参(this)：[0] OnFrontConnected</item>
-///   <item>2 参(this,int)：[1-2] OnFrontDisconnected/OnHeartBeatWarning</item>
+///   <item>2 参(this,int)：[1] OnFrontDisconnected、[2] OnHeartBeatWarning、[4] OnRtnPrivateSeqNo</item>
 /// </list>
 /// </para>
 /// <para>
@@ -121,7 +121,7 @@ internal sealed class CtpTraderSpiBridge : IDisposable
     public event Action<IntPtr>? RtnOrder;
     public event Action<IntPtr>? RtnTrade;
 
-    // ===== vtable 构造：填充全部 164 槽（6.7.11） =====
+    // ===== vtable 构造：填充全部 178 槽（6.7.13） =====
 
     private void BuildVtable()
     {
@@ -144,33 +144,42 @@ internal sealed class CtpTraderSpiBridge : IDisposable
         WriteSlot(ThostTraderApiNative.SpiVtable.OnRtnOrder, _onRtnOrder);
         WriteSlot(ThostTraderApiNative.SpiVtable.OnRtnTrade, _onRtnTrade);
 
-        // Noop 槽：2参int [2] OnHeartBeatWarning
+        // Noop 槽：2参int [2] OnHeartBeatWarning、[4] OnRtnPrivateSeqNo
         WriteSlot(ThostTraderApiNative.SpiVtable.OnHeartBeatWarning, NoopInt);
+        WriteSlot(ThostTraderApiNative.SpiVtable.OnRtnPrivateSeqNo, NoopInt);
 
-        // Noop 槽：5参Rsp模式（避开真实槽 30/31/39）
-        for (int i = 5; i <= 10; i++) WriteSlot(i, NoopRsp);
-        for (int i = 12; i <= 13; i++) WriteSlot(i, NoopRsp);
-        WriteSlot(15, NoopRsp);
-        for (int i = 17; i <= 29; i++) WriteSlot(i, NoopRsp);
-        for (int i = 32; i <= 38; i++) WriteSlot(i, NoopRsp);  // 含 [36] OnRspQryUserSession（6.7.11 新增，Noop 占位）
-        for (int i = 40; i <= 73; i++) WriteSlot(i, NoopRsp);  // 含 [73] OnRspQryAccountregister
+        // Noop 槽：5参Rsp模式（避开已由实例委托处理的槽）
+        for (int i = 6; i <= 11; i++) WriteSlot(i, NoopRsp);
+        for (int i = 13; i <= 14; i++) WriteSlot(i, NoopRsp);
+        WriteSlot(16, NoopRsp);
+        for (int i = 18; i <= 30; i++) WriteSlot(i, NoopRsp);
+        for (int i = 33; i <= 39; i++) WriteSlot(i, NoopRsp);  // 含 [37] OnRspQryUserSession（Noop 占位）
+        for (int i = 41; i <= 74; i++) WriteSlot(i, NoopRsp);  // 含 [74] OnRspQryAccountregister
 
-        // Noop 槽：3参ErrRtn模式 [77-78]
+        // Noop 槽：3参ErrRtn模式 [78-79]
         WriteSlot(ThostTraderApiNative.SpiVtable.OnErrRtnOrderInsert, NoopErrRtn);
         WriteSlot(ThostTraderApiNative.SpiVtable.OnErrRtnOrderAction, NoopErrRtn);
 
-        // Noop 槽：2参Rtn模式 [79-82]
-        for (int i = 79; i <= 82; i++) WriteSlot(i, NoopRtn);
+        // Noop 槽：2参Rtn模式 [80-83]
+        for (int i = 80; i <= 83; i++) WriteSlot(i, NoopRtn);
 
-        // Noop 槽：[83-163] 6.7.x 扩展槽（SPBM/RCAMS/RULE/OffsetSetting 等）
-        // 签名混合（Rsp/Rtn/ErrRtn），按 vnpy_ctp define 分类填充，避免签名不匹配导致栈失衡
-        for (int i = 83; i <= 163; i++) WriteSlot(i, NoopRsp);  // 先全填 5参 Rsp
+        // Noop 槽：[84-164] 既有扩展槽（SPBM/RCAMS/RULE/OffsetSetting 等）
+        // 签名混合，按 6.7.13 头文件分类填充，避免签名不匹配导致栈失衡。
+        for (int i = 84; i <= 164; i++) WriteSlot(i, NoopRsp);  // 先全填 5参 Rsp
         // 覆盖 Rtn 槽位（2参）
-        foreach (var i in new[] { 83, 87, 90, 91, 93, 96, 105, 106, 107, 108, 109, 110, 111, 112, 113, 119, 120, 124, 125, 126, 160 })
+        foreach (var i in new[] { 84, 88, 91, 92, 94, 97, 106, 107, 108, 109, 110, 111, 112, 113, 114, 120, 121, 125, 126, 127, 161 })
             WriteSlot(i, NoopRtn);
         // 覆盖 ErrRtn 槽位（3参）
-        foreach (var i in new[] { 84, 85, 86, 88, 89, 92, 94, 95, 97, 114, 115, 116, 117, 118, 161, 162 })
+        foreach (var i in new[] { 85, 86, 87, 89, 90, 93, 95, 96, 98, 115, 116, 117, 118, 119, 162, 163 })
             WriteSlot(i, NoopErrRtn);
+
+        // 6.7.13 末尾新增槽：短信验证码、价差申请、套保确认。
+        for (int i = 165; i <= 168; i++) WriteSlot(i, NoopRsp);
+        WriteSlot(169, NoopRtn);
+        for (int i = 170; i <= 171; i++) WriteSlot(i, NoopErrRtn);
+        for (int i = 172; i <= 174; i++) WriteSlot(i, NoopRsp);
+        WriteSlot(175, NoopRtn);
+        for (int i = 176; i <= 177; i++) WriteSlot(i, NoopErrRtn);
 
         // 伪 SPI 对象首槽 = vtable 指针
         Marshal.WriteIntPtr(_spiObject, _vtable);

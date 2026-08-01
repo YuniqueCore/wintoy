@@ -123,9 +123,14 @@ public struct CThostFtdcRspUserLoginField
 }
 
 /// <summary>
-/// CTP 行情登录请求结构，对齐 <c>CThostFtdcReqUserLoginField</c>。MdApi 登录无需认证，
-/// 实际使用时全字段填 0（空 BrokerID/UserID/Password），CTP 行情前置对匿名登录放行。
-/// 字段顺序按 CTP 6.7.x <c>ThostFtdcUserApiStruct.h</c>，字符数组用 ByValTStr + GBK marshaler。
+/// CTP 登录请求结构，对齐 6.7.13 <c>CThostFtdcReqUserLoginField</c>。
+/// <para>
+/// 交易 API 与行情 API 复用此结构。即使某些行情前置允许空账号登录，也必须完整保留
+/// MAC、动态密码、保留 IP、短信码等尾部字段；省略字段会使原生 API 按 6.7.13 布局读出
+/// 托管分配块之外的数据。
+/// </para>
+/// 字段顺序按对接方提供的 <c>6.7.13_API接口说明.chm</c> 内
+/// <c>ThostFtdcUserApiStruct.h</c>，字符数组用 ByValTStr + GBK marshaler。
 /// </summary>
 [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
 public struct CThostFtdcReqUserLoginField
@@ -151,11 +156,24 @@ public struct CThostFtdcReqUserLoginField
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 11)]
     public string ProtocolInfo;
 
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
-    public string ClientIPAddress;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 21)]
+    public string MacAddress;
 
-    public int ClientIPPort;
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 41)]
+    public string OneTimePassword;
+
+    /// <summary>6.7.x 兼容保留字段（OldIPAddressType[16]），不可省略。</summary>
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+    public string reserve1;
 
     [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 36)]
     public string LoginRemark;
+
+    public int ClientIPPort;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 33)]
+    public string ClientIPAddress;
+
+    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 17)]
+    public string SMSCode;
 }

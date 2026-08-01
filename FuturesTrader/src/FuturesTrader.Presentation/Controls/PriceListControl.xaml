@@ -12,11 +12,103 @@
              Focusable="True"
              PreviewMouseWheel="OnPreviewMouseWheel">
     <UserControl.Resources>
-        <GridLength x:Key="ColRatio1">1*</GridLength>
-        <GridLength x:Key="ColRatio2">2.5*</GridLength>
-        <GridLength x:Key="ColRatio3">3*</GridLength>
-        <GridLength x:Key="ColRatio4">2.5*</GridLength>
-        <GridLength x:Key="ColRatio5">1*</GridLength>
+        <GridLength x:Key="ColRatio1">1.5*</GridLength>
+        <GridLength x:Key="ColRatio2">2.25*</GridLength>
+        <GridLength x:Key="ColRatio3">3.25*</GridLength>
+        <GridLength x:Key="ColRatio4">2.25*</GridLength>
+        <GridLength x:Key="ColRatio5">0.75*</GridLength>
+
+        <Style x:Key="TradeCellStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="ToolTip" Value="左键/右键按对应数量下单"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PendingOrderCellStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{DynamicResource PriceListPendingOrderForegroundBrush}"/>
+            <Setter Property="ToolTip" Value="本价位挂单剩余手数；点击撤单"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <!--
+                                显式 TextBlock 与相邻买卖量使用同一排版路径和继承字号。
+                                避免 Button 对纯字符串创建的默认内容元素在紧凑行高中裁掉字形下沿，
+                                同时不缩小挂单数字，按钮本身仍覆盖整格供点击撤单。
+                            -->
+                            <TextBlock Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       TextAlignment="Center"
+                                       FontFamily="{TemplateBinding FontFamily}"
+                                       FontSize="{TemplateBinding FontSize}"
+                                       FontWeight="{TemplateBinding FontWeight}"
+                                       Foreground="{TemplateBinding Foreground}"
+                                       TextOptions.TextFormattingMode="Display"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding PendingOrderCount}" Value="0">
+                    <Setter Property="Visibility" Value="Hidden"/>
+                </DataTrigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PriceHeaderTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- 五列价格梯的 Excel 式分隔线。覆盖层不参与命中测试，避免影响下单/撤单按钮。 -->
+        <ControlTemplate x:Key="PriceCellGridLinesTemplate" TargetType="Control">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{StaticResource ColRatio1}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio2}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio3}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio4}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio5}"/>
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0.5,0.5"/>
+                <Border Grid.Column="1" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0.5,0.5"/>
+                <Border Grid.Column="2" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0.5,0.5"/>
+                <Border Grid.Column="3" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0.5,0.5"/>
+                <Border Grid.Column="4" BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}" BorderThickness="0,0,0.5,0.5"/>
+            </Grid>
+        </ControlTemplate>
 
         <DataTemplate x:Key="AskRowTemplate" DataType="marketData:PriceLevel">
             <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -37,35 +129,32 @@
                     <ColumnDefinition Width="{StaticResource ColRatio4}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio5}"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding PendingOrderCount, FallbackValue=''}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
-                           Cursor="Hand" Foreground="{DynamicResource PriceListPendingOrderForegroundBrush}"
-                           PreviewMouseDown="OnPendingOrderCellMouseDown" ToolTip="撤销本价位挂单">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding PendingOrderCount}" Value="0">
-                                    <Setter Property="Visibility" Value="Hidden"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-                <Border Grid.Column="1" Background="Transparent" Cursor="Hand"
-                        Tag="{x:Static trading:PriceLadderTradeSide.FirstTradeColumn}"
-                        PreviewMouseDown="OnTradeCellMouseDown">
+                <Button Grid.Column="0" Content="{Binding PendingOrderCount}"
+                        Style="{StaticResource PendingOrderCellStyle}"
+                        AutomationProperties.AutomationId="PendingOrderCell"
+                        Click="OnPendingOrderCellClick"
+                        PreviewMouseDown="OnPendingOrderCellMouseDown"/>
+                <Button Grid.Column="1" Style="{StaticResource TradeCellStyle}"
+                         AutomationProperties.Name="第一交易列"
+                         Tag="{x:Static trading:PriceLadderTradeSide.FirstTradeColumn}"
+                         Click="OnTradeCellClick"
+                         PreviewMouseDown="OnTradeCellMouseDown">
                     <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
+                </Button>
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"
                            Foreground="{DynamicResource PriceListAskPriceForegroundBrush}"/>
-                <Border Grid.Column="3" Background="Transparent" Cursor="Hand"
-                        Tag="{x:Static trading:PriceLadderTradeSide.SecondTradeColumn}"
-                        PreviewMouseDown="OnTradeCellMouseDown">
+                <Button Grid.Column="3" Style="{StaticResource TradeCellStyle}"
+                         AutomationProperties.Name="第二交易列"
+                         Tag="{x:Static trading:PriceLadderTradeSide.SecondTradeColumn}"
+                         Click="OnTradeCellClick"
+                         PreviewMouseDown="OnTradeCellMouseDown">
                     <TextBlock Text="{Binding AskVolume}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{DynamicResource PriceListAskVolumeForegroundBrush}"/>
-                </Border>
+                </Button>
                 <TextBlock Grid.Column="4" Text=""/>
+                <Control Grid.ColumnSpan="5" Panel.ZIndex="10" IsHitTestVisible="False"
+                         Template="{StaticResource PriceCellGridLinesTemplate}"/>
             </Grid>
         </DataTemplate>
 
@@ -88,41 +177,47 @@
                     <ColumnDefinition Width="{StaticResource ColRatio4}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio5}"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding PendingOrderCount, FallbackValue=''}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
-                           Cursor="Hand" Foreground="{DynamicResource PriceListPendingOrderForegroundBrush}"
-                           PreviewMouseDown="OnPendingOrderCellMouseDown" ToolTip="撤销本价位挂单">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding PendingOrderCount}" Value="0">
-                                    <Setter Property="Visibility" Value="Hidden"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-                <Border Grid.Column="1" Background="Transparent" Cursor="Hand"
-                        Tag="{x:Static trading:PriceLadderTradeSide.FirstTradeColumn}"
-                        PreviewMouseDown="OnTradeCellMouseDown">
+                <Button Grid.Column="0" Content="{Binding PendingOrderCount}"
+                        Style="{StaticResource PendingOrderCellStyle}"
+                        AutomationProperties.AutomationId="PendingOrderCell"
+                        Click="OnPendingOrderCellClick"
+                        PreviewMouseDown="OnPendingOrderCellMouseDown"/>
+                <Button Grid.Column="1" Style="{StaticResource TradeCellStyle}"
+                         AutomationProperties.Name="第一交易列"
+                         Tag="{x:Static trading:PriceLadderTradeSide.FirstTradeColumn}"
+                         Click="OnTradeCellClick"
+                         PreviewMouseDown="OnTradeCellMouseDown">
                     <TextBlock Text="{Binding BidVolume}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{DynamicResource PriceListBidVolumeForegroundBrush}"/>
-                </Border>
+                </Button>
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"
                            Foreground="{DynamicResource PriceListBidPriceForegroundBrush}"/>
-                <Border Grid.Column="3" Background="Transparent" Cursor="Hand"
-                        Tag="{x:Static trading:PriceLadderTradeSide.SecondTradeColumn}"
-                        PreviewMouseDown="OnTradeCellMouseDown">
+                <Button Grid.Column="3" Style="{StaticResource TradeCellStyle}"
+                         AutomationProperties.Name="第二交易列"
+                         Tag="{x:Static trading:PriceLadderTradeSide.SecondTradeColumn}"
+                         Click="OnTradeCellClick"
+                         PreviewMouseDown="OnTradeCellMouseDown">
                     <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
+                </Button>
                 <TextBlock Grid.Column="4" Text=""/>
+                <Control Grid.ColumnSpan="5" Panel.ZIndex="10" IsHitTestVisible="False"
+                         Template="{StaticResource PriceCellGridLinesTemplate}"/>
             </Grid>
         </DataTemplate>
 
         <DataTemplate x:Key="UnquotedRowTemplate" DataType="marketData:PriceLevel">
             <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
                   Background="{DynamicResource PriceListControlBackgroundBrush}">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="{StaticResource ColRatio1}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio2}"/>
@@ -130,29 +225,26 @@
                     <ColumnDefinition Width="{StaticResource ColRatio4}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio5}"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding PendingOrderCount, FallbackValue=''}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
-                           Cursor="Hand" Foreground="{DynamicResource PriceListPendingOrderForegroundBrush}"
-                           PreviewMouseDown="OnPendingOrderCellMouseDown" ToolTip="撤销本价位挂单">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding PendingOrderCount}" Value="0">
-                                    <Setter Property="Visibility" Value="Hidden"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-                <Border Grid.Column="1" Background="Transparent" Cursor="Hand"
-                        Tag="{x:Static trading:PriceLadderTradeSide.FirstTradeColumn}"
-                        PreviewMouseDown="OnTradeCellMouseDown"/>
+                <Button Grid.Column="0" Content="{Binding PendingOrderCount}"
+                        Style="{StaticResource PendingOrderCellStyle}"
+                        AutomationProperties.AutomationId="PendingOrderCell"
+                        Click="OnPendingOrderCellClick"
+                        PreviewMouseDown="OnPendingOrderCellMouseDown"/>
+                <Button Grid.Column="1" Style="{StaticResource TradeCellStyle}"
+                         AutomationProperties.Name="第一交易列"
+                         Tag="{x:Static trading:PriceLadderTradeSide.FirstTradeColumn}"
+                         Click="OnTradeCellClick"
+                         PreviewMouseDown="OnTradeCellMouseDown"/>
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
-                <Border Grid.Column="3" Background="Transparent" Cursor="Hand"
-                        Tag="{x:Static trading:PriceLadderTradeSide.SecondTradeColumn}"
-                        PreviewMouseDown="OnTradeCellMouseDown"/>
+                <Button Grid.Column="3" Style="{StaticResource TradeCellStyle}"
+                         AutomationProperties.Name="第二交易列"
+                         Tag="{x:Static trading:PriceLadderTradeSide.SecondTradeColumn}"
+                         Click="OnTradeCellClick"
+                         PreviewMouseDown="OnTradeCellMouseDown"/>
                 <TextBlock Grid.Column="4" Text=""/>
+                <Control Grid.ColumnSpan="5" Panel.ZIndex="10" IsHitTestVisible="False"
+                         Template="{StaticResource PriceCellGridLinesTemplate}"/>
             </Grid>
         </DataTemplate>
 
@@ -175,33 +267,31 @@
                     <ColumnDefinition Width="{StaticResource ColRatio4}"/>
                     <ColumnDefinition Width="{StaticResource ColRatio5}"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding PendingOrderCount, FallbackValue=''}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"
-                           Cursor="Hand" Foreground="{DynamicResource PriceListPendingOrderForegroundBrush}"
-                           PreviewMouseDown="OnPendingOrderCellMouseDown" ToolTip="撤销本价位挂单">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding PendingOrderCount}" Value="0">
-                                    <Setter Property="Visibility" Value="Hidden"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-                <Border Grid.Column="1" Background="Transparent" Cursor="Hand"
-                        Tag="{x:Static trading:PriceLadderTradeSide.FirstTradeColumn}"
-                        PreviewMouseDown="OnTradeCellMouseDown">
+                <Button Grid.Column="0" Content="{Binding PendingOrderCount}"
+                        Style="{StaticResource PendingOrderCellStyle}"
+                        FontWeight="Bold"
+                        AutomationProperties.AutomationId="PendingOrderCell"
+                        Click="OnPendingOrderCellClick"
+                        PreviewMouseDown="OnPendingOrderCellMouseDown"/>
+                <Button Grid.Column="1" Style="{StaticResource TradeCellStyle}"
+                         AutomationProperties.Name="第一交易列"
+                         Tag="{x:Static trading:PriceLadderTradeSide.FirstTradeColumn}"
+                         Click="OnTradeCellClick"
+                         PreviewMouseDown="OnTradeCellMouseDown">
                     <TextBlock Text="{Binding BidVolume}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
-                </Border>
+                </Button>
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"/>
-                <Border Grid.Column="3" Background="Transparent" Cursor="Hand"
-                        Tag="{x:Static trading:PriceLadderTradeSide.SecondTradeColumn}"
-                        PreviewMouseDown="OnTradeCellMouseDown">
+                <Button Grid.Column="3" Style="{StaticResource TradeCellStyle}"
+                         AutomationProperties.Name="第二交易列"
+                         Tag="{x:Static trading:PriceLadderTradeSide.SecondTradeColumn}"
+                         Click="OnTradeCellClick"
+                         PreviewMouseDown="OnTradeCellMouseDown">
                     <TextBlock Text="{Binding AskVolume}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
-                </Border>
+                </Button>
                 <TextBlock Grid.Column="4" Text=""/>
+                <Control Grid.ColumnSpan="5" Panel.ZIndex="10" IsHitTestVisible="False"
+                         Template="{StaticResource PriceCellGridLinesTemplate}"/>
             </Grid>
         </DataTemplate>
 
@@ -213,11 +303,38 @@
     </UserControl.Resources>
 
     <Grid>
-        <ScrollViewer x:Name="PriceScrollViewer"
+        <Grid.RowDefinitions>
+            <RowDefinition Height="20"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Border Grid.Row="0"
+                Background="{DynamicResource ControlFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{StaticResource ColRatio1}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio2}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio3}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio4}"/>
+                    <ColumnDefinition Width="{StaticResource ColRatio5}"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="挂" Style="{StaticResource PriceHeaderTextStyle}"
+                           AutomationProperties.AutomationId="PendingOrderHeader"
+                           ToolTip="活动挂单剩余手数，点击数字按价撤单"/>
+                <TextBlock Grid.Column="1" Text="1" Style="{StaticResource PriceHeaderTextStyle}"
+                           ToolTip="第一交易列：左右键使用不同挂单数量"/>
+                <TextBlock Grid.Column="2" Text="价" Style="{StaticResource PriceHeaderTextStyle}"/>
+                <TextBlock Grid.Column="3" Text="2" Style="{StaticResource PriceHeaderTextStyle}"
+                           ToolTip="第二交易列：左右键使用不同挂单数量"/>
+                <Control Grid.ColumnSpan="5" Panel.ZIndex="10" IsHitTestVisible="False"
+                         Template="{StaticResource PriceCellGridLinesTemplate}"/>
+            </Grid>
+        </Border>
+        <ScrollViewer x:Name="PriceScrollViewer" Grid.Row="1"
                       VerticalScrollBarVisibility="Hidden"
                       HorizontalScrollBarVisibility="Hidden">
             <ItemsControl x:Name="PriceItemsControl"
-                          ItemsSource="{Binding PriceLadder.Rows, RelativeSource={RelativeSource AncestorType=UserControl}}"
                           ItemTemplateSelector="{StaticResource RowTemplateSelector}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>

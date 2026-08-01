@@ -1,53 +1,38 @@
 using System.Collections.Concurrent;
 using System.Reactive.Subjects;
 using FuturesTrader.Domain.MarketData;
+using FuturesTrader.Infrastructure.Mock;
 using Microsoft.Extensions.Logging;
 
 namespace FuturesTrader.Infrastructure.MarketData;
 
 /// <summary>
-/// <see cref="IMarketDataService"/> 的 Mock 实现：内置几个示例合约，用 <see cref="Timer"/>
-/// 按可配间隔（默认 500ms）做随机游走 tick，产出 <see cref="DepthMarketData"/>（5 档买卖盘
-/// 按 last price 对称生成）→ <see cref="MarketDataStream"/>（<see cref="Subject{T}"/> 热流）。
-/// ConnectAsync 立即转 Connected，永不断线（不触发 Reconnecting），用于端到端验证。
-/// 线程安全：订阅集合用 <see cref="ConcurrentDictionary{TKey,TValue}"/>，tick 回调通过 Subject 同步派发。
+/// <see cref="IMarketDataService"/> 的确定性 Mock：使用共享合约目录和每合约独立 seed，
+/// 按可配间隔生成带累计成交量、成交额、持仓量、高低价和五档深度的随机游走行情。
+/// ConnectAsync 立即转 Connected，用于离线开发、实机 UI 和自动化回归。
 /// </summary>
 public sealed class SimulatedMarketDataService : IMarketDataService
 {
-    private static readonly Instrument[] SeedInstruments =
-    [
-        new() { InstrumentId = "ag2608", ExchangeId = "SHFE", Name = "白银2608", PriceTick = 1m, VolumeMultiple = 15 },
-        new() { InstrumentId = "ag2610", ExchangeId = "SHFE", Name = "白银2610", PriceTick = 1m, VolumeMultiple = 15 },
-        new() { InstrumentId = "cu2609", ExchangeId = "SHFE", Name = "铜2609", PriceTick = 10m, VolumeMultiple = 5 },
-        new() { InstrumentId = "jd2609", ExchangeId = "DCE", Name = "鸡蛋2609", PriceTick = 1m, VolumeMultiple = 5 },
-        new() { InstrumentId = "au2610", ExchangeId = "SHFE", Name = "黄金2610", PriceTick = 0.02m, VolumeMultiple = 1000 }
-    ];
-
-    /// <summary>各合约初始中间价（接近真实价位，便于 UI 视觉验证）。</summary>
-    private static readonly Dictionary<string, decimal> SeedMidPrices = new()
-    {
-        ["ag2608"] = 7450m,
-        ["ag2610"] = 7520m,
-        ["cu2609"] = 73200m,
-        ["jd2609"] = 3350m,
-        ["au2610"] = 556.80m
-    };
+    private const int DefaultSeed = 20_260_801;
 
     private readonly Subject<DepthMarketData> _marketData = new();
     private readonly Subject<ConnectionState> _connection = new();
-    private readonly ConcurrentDictionary<string, Instrument> _subscribed = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, decimal> _currentPrices = new(StringComparer.Ordinal);
-    private readonly Random _random = new(); // Subject.OnNext 在 timer 回调线程；锁内使用避免竞态
-    private readonly object _randomLock = new();
+    private readonly ConcurrentDictionary<string, QuoteState> _subscribed = new(StringComparer.OrdinalIgnoreCase);
     private readonly int _tickIntervalMs;
+    private readonly int _randomSeed;
     private readonly ILogger<SimulatedMarketDataService> _logger;
     private Timer? _timer;
+    private int _tickInProgress;
     private int _disposed;
 
-    public SimulatedMarketDataService(int tickIntervalMs = 500, ILogger<SimulatedMarketDataService>? logger = null)
+    public SimulatedMarketDataService(
+        int tickIntervalMs = 500,
+        ILogger<SimulatedMarketDataService>? logger = null,
+        int randomSeed = DefaultSeed)
     {
         _tickIntervalMs = tickIntervalMs > 0 ? tickIntervalMs : 500;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SimulatedMarketDataService>.Instance;
+        _randomSeed = randomSeed;
     }
 
     /// <inheritdoc />
@@ -62,10 +47,10 @@ public sealed class SimulatedMarketDataService : IMarketDataService
     /// <inheritdoc />
     public Task ConnectAsync(CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         TransitionTo(new ConnectionState.Connecting());
-        // Mock 立即连接成功，无前置/认证流程
         TransitionTo(new ConnectionState.Connected());
-        _logger.LogInformation("SimulatedMarketData 已连接（Mock）");
+        _logger.LogInformation("SimulatedMarketData 已连接（确定性 Mock，Seed={Seed}）", _randomSeed);
         return Task.CompletedTask;
     }
 
@@ -74,7 +59,6 @@ public sealed class SimulatedMarketDataService : IMarketDataService
     {
         StopTimer();
         _subscribed.Clear();
-        _currentPrices.Clear();
         TransitionTo(new ConnectionState.Disconnected());
         _logger.LogInformation("SimulatedMarketData 已断开（Mock）");
         return Task.CompletedTask;
@@ -83,19 +67,20 @@ public sealed class SimulatedMarketDataService : IMarketDataService
     /// <inheritdoc />
     public Task SubscribeAsync(IReadOnlyCollection<string> instrumentIds, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
+        if (CurrentState is not ConnectionState.Connected)
+            throw new InvalidOperationException("行情服务未连接，无法订阅合约");
         if (instrumentIds.Count == 0) return Task.CompletedTask;
+
         foreach (var id in instrumentIds)
         {
             if (string.IsNullOrWhiteSpace(id)) continue;
-            var seed = Array.Find(SeedInstruments, i => i.InstrumentId == id);
-            if (seed is null)
+            _subscribed.GetOrAdd(id, key =>
             {
-                // 未知合约：用默认 PriceTick=1 + 初始价 1000 兜底，保证订阅总能产出 tick
-                seed = new Instrument { InstrumentId = id, ExchangeId = "MOCK", Name = id, PriceTick = 1m, VolumeMultiple = 1 };
-            }
-            _subscribed[id] = seed;
-            _currentPrices.GetOrAdd(id, SeedMidPrices.TryGetValue(id, out var p) ? p : 1000m);
-            _logger.LogDebug("订阅合约 {Id}（Mock）", id);
+                var profile = MockMarketCatalog.FindOrFallback(key);
+                _logger.LogDebug("订阅合约 {Id} {Name}（Mock）", key, profile.Instrument.Name);
+                return new QuoteState(profile, CombineSeed(_randomSeed, key));
+            });
         }
         EnsureTimerRunning();
         return Task.CompletedTask;
@@ -105,26 +90,23 @@ public sealed class SimulatedMarketDataService : IMarketDataService
     public Task UnsubscribeAsync(IReadOnlyCollection<string> instrumentIds, CancellationToken cancellationToken = default)
     {
         foreach (var id in instrumentIds)
-        {
             _subscribed.TryRemove(id, out _);
-            _currentPrices.TryRemove(id, out _);
-        }
         if (_subscribed.IsEmpty) StopTimer();
         return Task.CompletedTask;
     }
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return ValueTask.CompletedTask;
         StopTimer();
+        _subscribed.Clear();
         TransitionTo(new ConnectionState.Disconnected());
         _marketData.OnCompleted();
         _connection.OnCompleted();
-        await Task.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 
-    /// <summary>确保 timer 在有订阅合约时运行。</summary>
     private void EnsureTimerRunning()
     {
         if (_timer is not null) return;
@@ -133,70 +115,145 @@ public sealed class SimulatedMarketDataService : IMarketDataService
 
     private void StopTimer()
     {
-        if (_timer is null) return;
-        _timer.Dispose();
-        _timer = null;
+        var timer = Interlocked.Exchange(ref _timer, null);
+        timer?.Dispose();
     }
 
-    /// <summary>每个 tick 对所有订阅合约做随机游走并推流。</summary>
     private void OnTick()
     {
-        if (_subscribed.IsEmpty) return;
-        foreach (var (id, instrument) in _subscribed)
-        {
-            if (!_currentPrices.TryGetValue(id, out var mid)) continue;
-            // 随机游走：±3 tick 内偏移（保证视觉可见但不剧烈）
-            int delta;
-            lock (_randomLock) { delta = _random.Next(-3, 4); }
-            var newMid = Math.Max(instrument.PriceTick, mid + delta * instrument.PriceTick);
-            _currentPrices[id] = newMid;
-            var snapshot = BuildSnapshot(instrument, newMid);
-            _marketData.OnNext(snapshot);
-        }
-    }
+        if (_disposed == 1 || _subscribed.IsEmpty) return;
+        if (Interlocked.Exchange(ref _tickInProgress, 1) == 1) return;
 
-    /// <summary>围绕 mid 价生成 5 档对称深度行情快照。</summary>
-    private static DepthMarketData BuildSnapshot(Instrument instrument, decimal mid)
-    {
-        var tick = instrument.PriceTick;
-        var bidPrices = new decimal[5];
-        var bidVolumes = new int[5];
-        var askPrices = new decimal[5];
-        var askVolumes = new int[5];
-        // 简单的伪随机量（基于 mid/取模），避免再引入 Random 锁开销
-        for (int i = 0; i < 5; i++)
+        try
         {
-            bidPrices[i] = mid - (i + 1) * tick;
-            askPrices[i] = mid + (i + 1) * tick;
-            bidVolumes[i] = 1 + (int)(mid % 23 + i * 7) % 50;
-            askVolumes[i] = 1 + (int)(mid % 19 + i * 11) % 50;
+            foreach (var state in _subscribed.Values.OrderBy(item => item.Profile.Instrument.InstrumentId))
+                _marketData.OnNext(state.NextSnapshot());
         }
-        return new DepthMarketData
+        catch (Exception ex)
         {
-            InstrumentId = instrument.InstrumentId,
-            TradingDay = DateTime.Today.ToString("yyyyMMdd"),
-            LastPrice = mid,
-            OpenPrice = mid,
-            HighestPrice = mid + 3 * tick,
-            LowestPrice = mid - 3 * tick,
-            Volume = (long)(mid % 1000) + 100,
-            Turnover = mid * 100,
-            OpenInterest = (long)(mid % 50000) + 1000,
-            UpperLimitPrice = mid + 50 * tick,
-            LowerLimitPrice = mid - 50 * tick,
-            AveragePrice = mid,
-            UpdateTime = TimeOnly.FromDateTime(DateTime.Now),
-            UpdateMillisec = DateTime.Now.Millisecond,
-            BidPrices = bidPrices,
-            BidVolumes = bidVolumes,
-            AskPrices = askPrices,
-            AskVolumes = askVolumes
-        };
+            _logger.LogError(ex, "生成 Mock 行情快照失败");
+        }
+        finally
+        {
+            Volatile.Write(ref _tickInProgress, 0);
+        }
     }
 
     private void TransitionTo(ConnectionState next)
     {
         CurrentState = next;
         _connection.OnNext(next);
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (_disposed == 1) throw new ObjectDisposedException(nameof(SimulatedMarketDataService));
+    }
+
+    private static int CombineSeed(int seed, string instrumentId)
+    {
+        unchecked
+        {
+            var combined = seed;
+            foreach (var character in instrumentId.ToUpperInvariant())
+                combined = combined * 31 + character;
+            return combined;
+        }
+    }
+
+    private sealed class QuoteState
+    {
+        private readonly Random _random;
+        private decimal _lastPrice;
+        private decimal _highestPrice;
+        private decimal _lowestPrice;
+        private long _volume;
+        private decimal _turnover;
+        private long _openInterest;
+
+        internal QuoteState(MockInstrumentProfile profile, int seed)
+        {
+            Profile = profile;
+            _random = new Random(seed);
+            _lastPrice = profile.InitialPrice;
+            _highestPrice = Math.Max(profile.InitialPrice, profile.OpenPrice);
+            _lowestPrice = Math.Min(profile.InitialPrice, profile.OpenPrice);
+            _volume = profile.InitialVolume;
+            _turnover = profile.InitialPrice * profile.InitialVolume * profile.Instrument.VolumeMultiple;
+            _openInterest = profile.InitialOpenInterest;
+        }
+
+        internal MockInstrumentProfile Profile { get; }
+
+        internal DepthMarketData NextSnapshot()
+        {
+            var instrument = Profile.Instrument;
+            var tick = instrument.PriceTick > 0 ? instrument.PriceTick : 1m;
+            var upperLimit = RoundToTick(Profile.PreSettlementPrice * 1.10m, tick);
+            var lowerLimit = RoundToTick(Profile.PreSettlementPrice * 0.90m, tick);
+
+            var moveRoll = _random.Next(100);
+            var deltaTicks = moveRoll switch
+            {
+                < 8 => -3,
+                < 24 => -2,
+                < 43 => -1,
+                < 58 => 0,
+                < 77 => 1,
+                < 93 => 2,
+                _ => 3,
+            };
+            _lastPrice = Math.Clamp(_lastPrice + deltaTicks * tick, lowerLimit, upperLimit);
+            _highestPrice = Math.Max(_highestPrice, _lastPrice);
+            _lowestPrice = Math.Min(_lowestPrice, _lastPrice);
+
+            var tradeVolume = _random.Next(1, Math.Max(3, Profile.TypicalDepthVolume / 3));
+            _volume += tradeVolume;
+            _turnover += _lastPrice * tradeVolume * instrument.VolumeMultiple;
+            _openInterest = Math.Max(100, _openInterest + _random.Next(-12, 18));
+
+            var bidPrices = new decimal[5];
+            var bidVolumes = new int[5];
+            var askPrices = new decimal[5];
+            var askVolumes = new int[5];
+            for (var index = 0; index < 5; index++)
+            {
+                bidPrices[index] = _lastPrice - (index + 1) * tick;
+                askPrices[index] = _lastPrice + (index + 1) * tick;
+                var depthFloor = Math.Max(2, Profile.TypicalDepthVolume - index * Profile.TypicalDepthVolume / 8);
+                var jitter = Math.Max(2, Profile.TypicalDepthVolume / 4);
+                bidVolumes[index] = Math.Max(1, depthFloor + _random.Next(-jitter, jitter + 1));
+                askVolumes[index] = Math.Max(1, depthFloor + _random.Next(-jitter, jitter + 1));
+            }
+
+            var now = DateTime.Now;
+            return new DepthMarketData
+            {
+                InstrumentId = instrument.InstrumentId,
+                TradingDay = now.ToString("yyyyMMdd"),
+                LastPrice = _lastPrice,
+                PreSettlementPrice = Profile.PreSettlementPrice,
+                OpenPrice = Profile.OpenPrice,
+                HighestPrice = _highestPrice,
+                LowestPrice = _lowestPrice,
+                Volume = _volume,
+                Turnover = _turnover,
+                OpenInterest = _openInterest,
+                UpperLimitPrice = upperLimit,
+                LowerLimitPrice = lowerLimit,
+                AveragePrice = _volume > 0
+                    ? _turnover / (_volume * instrument.VolumeMultiple)
+                    : _lastPrice,
+                UpdateTime = TimeOnly.FromDateTime(now),
+                UpdateMillisec = now.Millisecond,
+                BidPrices = bidPrices,
+                BidVolumes = bidVolumes,
+                AskPrices = askPrices,
+                AskVolumes = askVolumes,
+            };
+        }
+
+        private static decimal RoundToTick(decimal price, decimal tick) =>
+            Math.Round(price / tick, MidpointRounding.AwayFromZero) * tick;
     }
 }

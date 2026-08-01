@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -17,10 +19,134 @@ public sealed class PriceLevelTemplateSelector : DataTemplateSelector
 
     public override DataTemplate? SelectTemplate(object item, DependencyObject container)
     {
-        if (item is not PriceLevel level) return UnquotedTemplate;
-        if (level.DisplayZone == PriceDisplayZone.Unquoted) return UnquotedTemplate;
-        if (level.IsLastPrice) return CenterTemplate;
-        return level.DisplayZone == PriceDisplayZone.AskQuote ? AskTemplate : BidTemplate;
+        var kind = item switch
+        {
+            PriceLevel level => PriceListLayout.GetTemplateKind(level),
+            PriceListRow row => row.TemplateKind,
+            _ => PriceRowTemplateKind.Unquoted,
+        };
+        return kind switch
+        {
+            PriceRowTemplateKind.Ask => AskTemplate,
+            PriceRowTemplateKind.Bid => BidTemplate,
+            PriceRowTemplateKind.Center => CenterTemplate,
+            _ => UnquotedTemplate,
+        };
+    }
+}
+
+internal enum PriceRowTemplateKind
+{
+    Ask,
+    Bid,
+    Unquoted,
+    Center,
+}
+
+/// <summary>价格梯白格过滤规则。无人报价只表达显示状态，不参与交易侧或方向决策。</summary>
+internal static class PriceListLayout
+{
+    public static IReadOnlyList<PriceLevel> SelectVisibleRows(PriceLadder? ladder, bool showWhiteGrid)
+    {
+        if (ladder is null) return Array.Empty<PriceLevel>();
+        if (showWhiteGrid) return ladder.Rows;
+        return ladder.Rows
+            .Where(row => row.DisplayZone != PriceDisplayZone.Unquoted)
+            .ToArray();
+    }
+
+    internal static PriceRowTemplateKind GetTemplateKind(PriceLevel level)
+    {
+        if (level.DisplayZone == PriceDisplayZone.Unquoted) return PriceRowTemplateKind.Unquoted;
+        if (level.IsLastPrice) return PriceRowTemplateKind.Center;
+        return level.DisplayZone == PriceDisplayZone.AskQuote
+            ? PriceRowTemplateKind.Ask
+            : PriceRowTemplateKind.Bid;
+    }
+}
+
+/// <summary>价格梯展示行：仅用于 WPF 原位更新，避免每个行情 tick 销毁按钮容器。</summary>
+internal sealed class PriceListRow : INotifyPropertyChanged
+{
+    private decimal _price;
+    private int _bidVolume;
+    private int _askVolume;
+    private int _pendingOrderCount;
+    private bool _isLastPrice;
+    private PriceDisplayZone _displayZone;
+
+    internal PriceListRow(PriceLevel source) => Update(source);
+
+    public decimal Price { get => _price; private set => SetField(ref _price, value); }
+
+    public int BidVolume { get => _bidVolume; private set => SetField(ref _bidVolume, value); }
+
+    public int AskVolume { get => _askVolume; private set => SetField(ref _askVolume, value); }
+
+    public int PendingOrderCount { get => _pendingOrderCount; private set => SetField(ref _pendingOrderCount, value); }
+
+    public bool IsLastPrice { get => _isLastPrice; private set => SetField(ref _isLastPrice, value); }
+
+    public PriceDisplayZone DisplayZone { get => _displayZone; private set => SetField(ref _displayZone, value); }
+
+    internal PriceRowTemplateKind TemplateKind => DisplayZone switch
+    {
+        PriceDisplayZone.Unquoted => PriceRowTemplateKind.Unquoted,
+        _ when IsLastPrice => PriceRowTemplateKind.Center,
+        PriceDisplayZone.AskQuote => PriceRowTemplateKind.Ask,
+        _ => PriceRowTemplateKind.Bid,
+    };
+
+    internal void Update(PriceLevel source)
+    {
+        Price = source.Price;
+        BidVolume = source.BidVolume;
+        AskVolume = source.AskVolume;
+        PendingOrderCount = source.PendingOrderCount;
+        IsLastPrice = source.IsLastPrice;
+        DisplayZone = source.DisplayZone;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return;
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+}
+
+/// <summary>协调不可变领域快照与稳定 WPF 行对象。</summary>
+internal sealed class PriceListRows
+{
+    internal ObservableCollection<PriceListRow> Items { get; } = new();
+
+    /// <returns>行结构是否变化；结构变化时控件才需要重新居中。</returns>
+    internal bool Apply(IReadOnlyList<PriceLevel> nextRows)
+    {
+        if (Items.Count != nextRows.Count)
+        {
+            Items.Clear();
+            foreach (var row in nextRows) Items.Add(new PriceListRow(row));
+            return true;
+        }
+
+        var structureChanged = false;
+        for (var index = 0; index < nextRows.Count; index++)
+        {
+            var next = nextRows[index];
+            if (Items[index].TemplateKind != PriceListLayout.GetTemplateKind(next))
+            {
+                Items[index] = new PriceListRow(next);
+                structureChanged = true;
+            }
+            else
+            {
+                Items[index].Update(next);
+            }
+        }
+        return structureChanged;
     }
 }
 
@@ -30,6 +156,8 @@ public sealed class PriceLevelTemplateSelector : DataTemplateSelector
 /// </summary>
 public sealed partial class PriceListControl : UserControl
 {
+    private readonly PriceListRows _rows = new();
+
     public static readonly DependencyProperty PriceLadderProperty =
         DependencyProperty.Register(
             nameof(PriceLadder),
@@ -43,6 +171,13 @@ public sealed partial class PriceListControl : UserControl
             typeof(double),
             typeof(PriceListControl),
             new PropertyMetadata(18.0));
+
+    public static readonly DependencyProperty ShowWhiteGridProperty =
+        DependencyProperty.Register(
+            nameof(ShowWhiteGrid),
+            typeof(bool),
+            typeof(PriceListControl),
+            new PropertyMetadata(true, OnShowWhiteGridChanged));
 
     public static readonly DependencyProperty MouseWheelSpeedProperty =
         DependencyProperty.Register(
@@ -75,7 +210,11 @@ public sealed partial class PriceListControl : UserControl
             typeof(EventHandler<PriceSelectedEventArgs>),
             typeof(PriceListControl));
 
-    public PriceListControl() => InitializeComponent();
+    public PriceListControl()
+    {
+        InitializeComponent();
+        PriceItemsControl.ItemsSource = _rows.Items;
+    }
 
     public event EventHandler<PriceSelectedEventArgs> PriceSelected
     {
@@ -109,6 +248,13 @@ public sealed partial class PriceListControl : UserControl
         set => SetValue(RowHeightProperty, value);
     }
 
+    [Category("Appearance")]
+    public bool ShowWhiteGrid
+    {
+        get => (bool)GetValue(ShowWhiteGridProperty);
+        set => SetValue(ShowWhiteGridProperty, value);
+    }
+
     [Category("Behavior")]
     public int MouseWheelSpeed
     {
@@ -118,7 +264,18 @@ public sealed partial class PriceListControl : UserControl
 
     private static void OnPriceLadderChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
-        if (d is PriceListControl control) control.ScrollToCenter();
+        if (d is PriceListControl control) control.RefreshVisibleRows();
+    }
+
+    private static void OnShowWhiteGridChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is PriceListControl control) control.RefreshVisibleRows();
+    }
+
+    private void RefreshVisibleRows()
+    {
+        var structureChanged = _rows.Apply(PriceListLayout.SelectVisibleRows(PriceLadder, ShowWhiteGrid));
+        if (structureChanged) ScrollToCenter();
     }
 
     private void ScrollToCenter()
@@ -126,8 +283,15 @@ public sealed partial class PriceListControl : UserControl
         if (PriceLadder is null || PriceItemsControl.Items.Count == 0) return;
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            if (PriceLadder is null) return;
-            var centerIndex = PriceLadder.CenterIndex;
+            var centerIndex = -1;
+            for (var index = 0; index < PriceItemsControl.Items.Count; index++)
+            {
+                if (PriceItemsControl.Items[index] is PriceListRow { IsLastPrice: true })
+                {
+                    centerIndex = index;
+                    break;
+                }
+            }
             if (centerIndex < 0 || centerIndex >= PriceItemsControl.Items.Count) return;
             if (PriceItemsControl.ItemContainerGenerator.ContainerFromIndex(centerIndex) is FrameworkElement element)
                 element.BringIntoView();
@@ -141,19 +305,16 @@ public sealed partial class PriceListControl : UserControl
         PriceScrollViewer.ScrollToVerticalOffset(PriceScrollViewer.VerticalOffset + offset * RowHeight);
     }
 
-    /// <summary>第 1/3 列鼠标按下。左右键只选择数量事件，物理交易侧随事件一起上送。</summary>
+    /// <summary>第 1/3 列右键按下；左键统一走标准 Button.Click，兼容键盘和 UI Automation。</summary>
     private void OnTradeCellMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.Handled || sender is not FrameworkElement { DataContext: PriceLevel level, Tag: PriceLadderTradeSide side }) return;
-        var routedEvent = e.ChangedButton switch
-        {
-            MouseButton.Left => PriceSelectedEvent,
-            MouseButton.Right => PriceRightClickedEvent,
-            _ => null
-        };
-        if (routedEvent is null) return;
+        if (e.Handled
+            || e.ChangedButton != MouseButton.Right
+            || sender is not FrameworkElement { DataContext: PriceListRow level, Tag: PriceLadderTradeSide side })
+            return;
 
-        RaiseEvent(new PriceSelectedEventArgs(routedEvent, this)
+        Focus();
+        RaiseEvent(new PriceSelectedEventArgs(PriceRightClickedEvent, this)
         {
             Price = level.Price,
             TradeSide = side
@@ -161,15 +322,36 @@ public sealed partial class PriceListControl : UserControl
         e.Handled = true;
     }
 
-    /// <summary>第 0 列已有挂单时，左右键均可请求按价撤单。</summary>
+    /// <summary>第 1/3 列标准左键/键盘激活入口。</summary>
+    private void OnTradeCellClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: PriceListRow level, Tag: PriceLadderTradeSide side }) return;
+        Focus();
+        RaiseEvent(new PriceSelectedEventArgs(PriceSelectedEvent, this)
+        {
+            Price = level.Price,
+            TradeSide = side
+        });
+        e.Handled = true;
+    }
+
+    /// <summary>第 0 列已有挂单时，右键请求按价撤单。</summary>
     private void OnPendingOrderCellMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.Handled
-            || e.ChangedButton is not (MouseButton.Left or MouseButton.Right)
-            || sender is not FrameworkElement { DataContext: PriceLevel level }
+            || e.ChangedButton != MouseButton.Right
+            || sender is not FrameworkElement { DataContext: PriceListRow level }
             || level.PendingOrderCount <= 0)
             return;
 
+        RaiseEvent(new PriceSelectedEventArgs(PendingOrderCancelEvent, this) { Price = level.Price });
+        e.Handled = true;
+    }
+
+    /// <summary>第 0 列标准左键/键盘激活入口。</summary>
+    private void OnPendingOrderCellClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: PriceListRow level } || level.PendingOrderCount <= 0) return;
         RaiseEvent(new PriceSelectedEventArgs(PendingOrderCancelEvent, this) { Price = level.Price });
         e.Handled = true;
     }

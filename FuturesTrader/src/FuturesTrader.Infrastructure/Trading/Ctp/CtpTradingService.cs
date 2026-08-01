@@ -125,9 +125,9 @@ public sealed class CtpTradingService : ITradingService
 
             _connectTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-            // RegisterSpi → SubscribePrivateTopic(RESUME) → SubscribePublicTopic(RESUME) → RegisterFront → Init
+            // RegisterSpi → SubscribePrivateTopic(RESUME, nSeqNo=1) → SubscribePublicTopic(RESUME) → RegisterFront → Init
             ThostTraderApiNative.RegisterSpi(_apiPtr, _spi.SpiPointer);
-            ThostTraderApiNative.SubscribePrivateTopic(_apiPtr, ThostTraderApiNative.TertResume);
+            ThostTraderApiNative.SubscribePrivateTopic(_apiPtr, ThostTraderApiNative.TertResume, nSeqNo: 1);
             ThostTraderApiNative.SubscribePublicTopic(_apiPtr, ThostTraderApiNative.TertResume);
             ThostTraderApiNative.RegisterFront(_apiPtr, _options.FrontAddress);
             _logger.LogInformation("CtpTrading Init 中：ApiRuntimeMode={ApiRuntimeMode} Flow={Flow}",
@@ -859,6 +859,9 @@ public sealed class CtpTradingService : ITradingService
             Name = f.InstrumentName ?? string.Empty,
             PriceTick = (decimal)f.PriceTick,
             VolumeMultiple = f.VolumeMultiple,
+            MinLimitOrderVolume = f.MinLimitOrderVolume,
+            MaxLimitOrderVolume = f.MaxLimitOrderVolume,
+            IsTrading = f.IsTrading != 0,
             ProductClass = f.ProductClass,
             StrikePrice = (decimal)f.StrikePrice,
             OptionsType = f.OptionsType,

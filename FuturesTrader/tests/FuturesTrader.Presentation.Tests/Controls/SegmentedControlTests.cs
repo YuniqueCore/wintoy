@@ -109,6 +109,16 @@ public class SegmentedControlTests
         a.Should().NotBe(c, "Label 不同的 OptionItem 不应相等");
     }
 
+    [Fact]
+    public void ValueSelector_resolves_enum_instead_of_writing_OptionItem_to_enum_binding()
+    {
+        var option = new OptionItem(FloatingOrderMode.Open, "仓", "开仓模式");
+
+        SegmentedControl.ResolveMember(option, "Value").Should().Be(FloatingOrderMode.Open);
+        SegmentedControl.ResolveMember(option, "Label").Should().Be("仓");
+        SegmentedControl.ResolveMember(option, "Description").Should().Be("开仓模式");
+    }
+
     /// <summary>测试用值对象。</summary>
     private sealed record TestOption(int Id, string Name);
 }

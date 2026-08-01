@@ -196,6 +196,7 @@ public class TradingViewModelTests
         vm.RboB.Should().BeTrue();
         vm.OrderPlacementMode.Should().Be(OrderPlacementMode.Append);
         vm.CbBgds.Should().BeTrue();
+        vm.ShowWhiteGrid.Should().BeTrue();
         vm.CbZdtLock.Should().BeTrue();
         vm.CntrbySprdFctn.Should().Be(1);
     }
@@ -333,6 +334,25 @@ public class TradingViewModelTests
         vm.Order.StatusMessage.Should().Contain("报单已提交");
     }
 
+    [Fact]
+    public async Task Pending_order_column_aggregates_remaining_volume_instead_of_order_count()
+    {
+        var vm = CreateVm();
+        vm.ValLeft = 3;
+
+        await vm.OnPriceLeftClickedAsync(100m, PriceLadderTradeSide.FirstTradeColumn);
+
+        vm.BuildPendingByPrice().Should().ContainKey(100m).WhoseValue.Should().Be(3);
+    }
+
+    [Fact]
+    public void Connection_state_reads_current_hot_stream_state_when_window_is_created()
+    {
+        var vm = CreateVm();
+
+        vm.ConnectionState.Should().Be("已连接");
+    }
+
     // ── ValLeft/ValRight=0 时不下单（禁用点击下单）────────────────────────
 
     [Fact]
@@ -343,8 +363,7 @@ public class TradingViewModelTests
 
         await vm.OnPriceLeftClickedAsync(100m, PriceLadderTradeSide.FirstTradeColumn);
 
-        vm.Order.StatusMessage.Should().NotContain("报单已提交", "ValLeft=0 应跳过下单");
-        vm.Order.StatusMessage.Should().BeEmpty();
+        vm.Order.StatusMessage.Should().Be("左键挂单数量必须大于 0");
     }
 
     [Fact]
@@ -355,8 +374,7 @@ public class TradingViewModelTests
 
         await vm.OnPriceRightClickedAsync(100m, PriceLadderTradeSide.SecondTradeColumn);
 
-        vm.Order.StatusMessage.Should().NotContain("报单已提交", "ValRight=0 应跳过下单");
-        vm.Order.StatusMessage.Should().BeEmpty();
+        vm.Order.StatusMessage.Should().Be("右键挂单数量必须大于 0");
     }
 
     // ── CbOnlyOpen 开关联动（开仓/平仓方向）──────────────────────────────

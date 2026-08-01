@@ -78,6 +78,17 @@ public class FloatingMainViewModelTests
         vm.IsSyncGrouped.Should().BeTrue("默认 SyncMode=Grouped 应映射为 IsSyncGrouped=true");
     }
 
+    [Fact]
+    public void Floating_switchers_and_white_grid_have_explicit_defaults()
+    {
+        var vm = CreateVm();
+
+        vm.DisplayMode.Should().Be(FloatingDisplayMode.Single);
+        vm.OrderMode.Should().Be(FloatingOrderMode.Open);
+        vm.AbMode.Should().Be(FloatingAbMode.A);
+        vm.ShowWhiteGrid.Should().BeTrue("白格默认应勾选并显示无人报价价位行");
+    }
+
     // ── SyncMode 变化触发 IsSyncGrouped 通知 ──────────
 
     [Fact]
@@ -192,6 +203,50 @@ public class FloatingMainViewModelTests
             .Which.Should().Be(OrderPlacementMode.Append);
     }
 
+    [Fact]
+    public void Floating_white_grid_change_applies_visibility_to_contract_windows()
+    {
+        var interaction = new StubTradingWindowInteractionService();
+        var vm = CreateVm(interaction: interaction);
+
+        vm.ShowWhiteGrid = false;
+
+        interaction.WhiteGridUpdates.Should().ContainSingle().Which.Should().BeFalse();
+    }
+
+    [Fact]
+    public void FilterInstruments_prioritizes_exact_code_then_prefix_and_name_matches()
+    {
+        Instrument[] instruments =
+        [
+            new() { InstrumentId = "xag9999", Name = "白银测试" },
+            new() { InstrumentId = "ag2608", Name = "白银2608" },
+            new() { InstrumentId = "ag", Name = "白银主连" },
+            new() { InstrumentId = "cu2608", Name = "AG 名称匹配" },
+        ];
+
+        var matches = FloatingMainViewModel.FilterInstruments(instruments, "ag");
+
+        matches.Select(instrument => instrument.InstrumentId)
+            .Should().Equal("ag", "ag2608", "cu2608", "xag9999");
+    }
+
+    [Fact]
+    public void FilterInstruments_deduplicates_latest_metadata_and_honors_result_limit()
+    {
+        var instruments = Enumerable.Range(0, 60)
+            .Select(index => new Instrument { InstrumentId = $"ag{index:0000}", Name = $"旧名称 {index}" })
+            .Append(new Instrument { InstrumentId = "AG0000", Name = "最新名称" })
+            .ToArray();
+
+        var matches = FloatingMainViewModel.FilterInstruments(instruments, "ag", maxResults: 50);
+
+        matches.Should().HaveCount(50);
+        matches.Should().ContainSingle(instrument =>
+            instrument.InstrumentId.Equals("AG0000", StringComparison.OrdinalIgnoreCase)
+            && instrument.Name == "最新名称");
+    }
+
     // ── 桩实现 ────────────────────────────────────────
 
     /// <summary>测试用会话服务：所有属性返回 null（未登录），只暴露必要 getter。</summary>
@@ -224,11 +279,15 @@ public class FloatingMainViewModelTests
     {
         public List<bool> OnlyOpenUpdates { get; } = [];
         public List<OrderPlacementMode> PlacementModeUpdates { get; } = [];
+        public List<bool> WhiteGridUpdates { get; } = [];
 
         public void ApplyOnlyOpenToOpenWindows(bool onlyOpen) => OnlyOpenUpdates.Add(onlyOpen);
 
         public void ApplyOrderPlacementModeToOpenWindows(OrderPlacementMode placementMode) =>
             PlacementModeUpdates.Add(placementMode);
+
+        public void ApplyWhiteGridVisibilityToOpenWindows(bool showWhiteGrid) =>
+            WhiteGridUpdates.Add(showWhiteGrid);
     }
 
     /// <summary>测试用窗口分组仓库桩：仅持有内存 WindowLayout。</summary>

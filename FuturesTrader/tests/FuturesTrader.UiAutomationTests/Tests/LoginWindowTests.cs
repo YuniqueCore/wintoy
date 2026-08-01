@@ -9,7 +9,7 @@ namespace FuturesTrader.UiAutomationTests.Tests;
 /// 登录窗口 UI 元素测试：验证行情地址表、账号列表、密码框、登录/设置按钮均存在且可交互。
 /// 对应 0527.exe 登录页的核心控件 1:1 复刻契约。
 /// <para>
-/// appsettings.json 已是 Mock 模式（Provider=Mock），登录页会注入测试账号 000102，
+/// appsettings.json 已是 Mock 模式（Provider=Mock），登录页会注入一个无权限的本地占位账号，
 /// 行情地址从 data/HQAddress.xml 加载。
 /// </para>
 /// </summary>
@@ -101,10 +101,9 @@ public class LoginWindowTests
 
     /// <summary>输入密码后，登录按钮应变为启用状态（CanLogin 依赖密码非空）。</summary>
     /// <remarks>
-    /// WPF <c>PasswordBox</c> 在 UIA3 虽是 <see cref="ControlType.Edit"/>，但因安全限制不支持
-    /// <c>ValuePattern</c>，FlaUI 工厂将其包装为 <c>PasswordBox</c> 类而非 <c>TextBox</c>，
-    /// 故 <c>as TextBox</c> 必返回 null。正确做法：<c>Focus</c> + <c>Keyboard.Type</c> 模拟真实键盘输入，
-    /// 触发 WPF 的 <c>PasswordChanged</c> 事件 → ViewModel 密码更新 → <c>CanLogin</c> 重算。
+    /// 优先通过 UIA <c>ValuePattern</c> 写入测试密码，避免依赖当前 Windows 输入桌面；
+    /// 若控件实现不暴露该模式，才回退到真实键盘输入。两条路径都会触发 WPF 的
+    /// <c>PasswordChanged</c> 事件 → ViewModel 密码更新 → <c>CanLogin</c> 重算。
     /// </remarks>
     [Fact]
     public void LoginWindow_LoginButton_EnablesAfterPasswordEntered()
@@ -126,21 +125,36 @@ public class LoginWindowTests
             TimeSpan.FromSeconds(10));
         loginBtn.Should().NotBeNull("登录按钮应存在");
 
-        // 2. 输入密码前：登录按钮应禁用（无密码时 CanLogin=false）
-        loginBtn!.IsEnabled.Should().BeFalse("无密码时登录按钮应禁用");
+        // 2. 共享 Host 可能保留前序 UI 用例写入的密码；先显式恢复本用例的空密码前置状态。
+        //    这样验证的是“空 → 禁用、输入 → 启用”的自身契约，而不依赖测试执行顺序。
+        passwordBox!.AsTextBox().Text = string.Empty;
+        UiTestHelpers.WaitTrue(() => !loginBtn!.IsEnabled, TimeSpan.FromSeconds(2))
+            .Should().BeTrue("清空密码后登录按钮应禁用");
 
-        // 3. 输入密码（Click 聚焦 + Keyboard.Type），重试直到登录按钮启用或达 3 次上限。
-        //    首次 Click 可能因窗口前台切换时序问题未真正聚焦到 PasswordBox 内部 TextBox，
-        //    重试可显著提升可靠性。
-        var enabled = false;
+        // 3. 首选 UIA ValuePattern；它不调用 SendInput，在断开的桌面会话中仍可验证命令状态更新。
+        //    有些 PasswordBox 会为安全策略拒绝 ValuePattern，此时保留真实键盘路径作为交互桌面兜底。
+        var enabled = TrySetPasswordWithValuePattern(passwordBox!, loginBtn!);
         for (var attempt = 0; attempt < 3 && !enabled; attempt++)
         {
             _fixture.EnsureLoginWindowForeground();
             passwordBox!.Click();
             System.Threading.Thread.Sleep(150);
-            FlaUI.Core.Input.Keyboard.Type("258147");
+            FlaUI.Core.Input.Keyboard.Type("mock-password");
             enabled = UiTestHelpers.WaitTrue(() => loginBtn.IsEnabled, TimeSpan.FromSeconds(2));
         }
         enabled.Should().BeTrue("输入密码后登录按钮应启用（CanLogin 依赖密码非空）");
+    }
+
+    private static bool TrySetPasswordWithValuePattern(AutomationElement passwordBox, AutomationElement loginButton)
+    {
+        try
+        {
+            passwordBox.AsTextBox().Text = "mock-password";
+            return UiTestHelpers.WaitTrue(() => loginButton.IsEnabled, TimeSpan.FromSeconds(2));
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

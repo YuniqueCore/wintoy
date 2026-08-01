@@ -37,6 +37,7 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
 
     /// <summary>已打开窗口字典：合约码 → 窗口 + 分组号。用于 Open 去重 + CloseGroup 索引。</summary>
     private readonly Dictionary<string, TrackedOpen> _open = new(StringComparer.Ordinal);
+    private bool _showWhiteGrid = true;
 
     public WindowManager(
         IServiceProvider services,
@@ -93,6 +94,17 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
     });
 
     /// <inheritdoc />
+    public void ApplyWhiteGridVisibilityToOpenWindows(bool showWhiteGrid) => OnUi(() =>
+    {
+        _showWhiteGrid = showWhiteGrid;
+        var viewModels = SnapshotOpenViewModels();
+        foreach (var viewModel in viewModels)
+            viewModel.ShowWhiteGrid = showWhiteGrid;
+        _logger.LogInformation("浮动栏白格显示已应用到 {Count} 个已创建合约窗口：Show={Show}",
+            viewModels.Count, showWhiteGrid);
+    });
+
+    /// <inheritdoc />
     public void Open(InstrumentWindow window) => OnUi(() =>
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -119,6 +131,7 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
 
         var vm = (TradingViewModel)ActivatorUtilities.CreateInstance(
             _services, typeof(TradingViewModel), window, marketData, trading);
+        vm.ShowWhiteGrid = _showWhiteGrid;
 
         // 新窗口（Left/Top=0 未设置位置）追加到同组已有窗口的最右侧对齐
         var (left, top) = (window.Left, window.Top);

@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using FluentAssertions;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
 using FuturesTrader.UiAutomationTests.Fixtures;
 
 namespace FuturesTrader.UiAutomationTests.Tests;
@@ -76,19 +77,21 @@ public class ThemeTests
         return settingsWindow!;
     }
 
-    /// <summary>切换到"外观"段：点击 ListBox 中的"外观"项（CurrentSectionIndex=4）。</summary>
+    /// <summary>切换到"外观"段：选择 ListBox 中的"外观"项（CurrentSectionIndex=5）。</summary>
     private void SwitchToAppearanceSection(Window settingsWindow)
     {
-        // ListBoxItem 继承自 SelectionItemAutomationElement，不在 AutomationElement 继承链里，
-        // `as ListBoxItem` 必返回 null。用 AsListBoxItem() 扩展方法包装。
+        // 名称在内部 TextBlock 上；沿 UIA 父链找到 ListBoxItem 容器。
+        // 只有容器公开 SelectionItemPattern，可通过 UIA 选择而无需物理鼠标输入。
         var appearanceItem = UiTestHelpers.WaitFor(() =>
-            settingsWindow.FindFirstDescendant(settingsWindow.Automation.ConditionFactory.ByName("外观"))?.AsListBoxItem(),
-            TimeSpan.FromSeconds(3));
+        {
+            var current = settingsWindow.FindFirstDescendant(
+                settingsWindow.Automation.ConditionFactory.ByName("外观"));
+            while (current is not null && current.ControlType != ControlType.ListItem)
+                current = current.Parent;
+            return current?.AsListBoxItem();
+        }, TimeSpan.FromSeconds(3));
         appearanceItem.Should().NotBeNull("应存在'外观'段导航项");
-        // WPF UI ListBoxItem 不暴露 SelectionItemPattern（Select() 会抛 PatternNotSupportedException），
-        // 改用 Click()。Click 前确保 SettingsWindow 在前台，否则鼠标坐标可能落到其他窗口。
-        _fixture.EnsureWindowForeground(settingsWindow);
-        appearanceItem!.Click();
+        appearanceItem!.Select();
         // 等待 ContentControl 切换 DataTemplate，RadioButton 出现
         System.Threading.Thread.Sleep(300);
     }
