@@ -17,7 +17,7 @@ namespace FuturesTrader.Presentation.ViewModels;
 /// <summary>
 /// 合约交易窗口 ViewModel（TYYWin 复刻）：每合约一个实例，由 WindowManager 用 ActivatorUtilities 创建。
 /// 构造时订阅本合约行情流 → Dispatcher 刷新 <see cref="PriceLadder"/>（价差居中）+ 摘要字段。
-/// <see cref="InstrumentCode"/> 为合约代码；<see cref="PriceLadderLevels"/> 控制每侧可视价位数（默认 20）。
+/// <see cref="InstrumentCode"/> 为合约代码；空方/多方显示行数由每窗口配置控制（默认各 30）。
 /// 行情推送在 CTP/Mock 工作线程触发，回调内通过 <see cref="MarshalToUi"/> 切回 UI 线程刷新。
 /// <para>
 /// <see cref="Order"/> 为下单区 VM（买卖/开平/价格/数量 + 报单/撤单），行情到达时同步 PriceTick 给它做价格校验。
@@ -79,9 +79,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         _options = options.Value;
         _legacyTradingRuntime = legacyTradingRuntime ?? new LegacyTradingRuntime();
         _logger = logger;
-        PriceLadderLevels = Math.Clamp(_options.PriceLadderLevels, 10, 100);
-
-        // 从 InstrumentWindow 33 字段初始化合约窗口配置（双向绑定，关闭时回写）
+        // 从 InstrumentWindow 字段初始化合约窗口配置（双向绑定，关闭时回写）
         HydrateFromConfig(config);
 
         // 下单区 VM：每合约独立实例，共享交易/风控/校验链单例服务
@@ -101,9 +99,6 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     /// 合约元数据到达后（OnInstrumentUpdate）刷新。</summary>
     public string InstrumentDisplayName => BuildDisplayName();
 
-    /// <summary>价格梯上下档位数（从 MarketDataOptions 绑定）。</summary>
-    public int PriceLadderLevels { get; }
-
     /// <summary>下单区 VM（买卖/开平/价格/数量 + 报单/撤单）。XAML 下单面板 DataContext={Binding Order}。</summary>
     public OrderViewModel Order { get; }
 
@@ -115,6 +110,11 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial PriceLadder? PriceLadder { get; private set; }
+
+    /// <summary>配置栏价格梯结构摘要，避免用虚拟化 UI 容器数量推断真实行数。</summary>
+    public string PriceLadderStructureSummary => PriceLadder is null
+        ? "自动 — 格"
+        : $"自动 {PriceLadder.UnquotedRowCount} 格 · 共 {PriceLadder.Rows.Count} 格";
 
     /// <summary>是否显示无人报价价位行。只影响呈现，不改变价格梯交易侧和下单规则。</summary>
     [ObservableProperty]
@@ -182,6 +182,12 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
 
     /// <summary>单行高度（RowHeight，像素）。</summary>
     [ObservableProperty] public partial int RowHeight { get; set; } = 12;
+
+    /// <summary>卖一向上的空方价格行数；每个合约窗口独立持久化。</summary>
+    [ObservableProperty] public partial int AskQuoteRowCount { get; set; } = 30;
+
+    /// <summary>买一向下的多方价格行数；每个合约窗口独立持久化。</summary>
+    [ObservableProperty] public partial int BidQuoteRowCount { get; set; } = 30;
 
     /// <summary>旧 RBOA 单选状态：A 模式（同合约同方向替换）。</summary>
     [ObservableProperty] public partial bool RboA { get; set; }
@@ -281,6 +287,8 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         ValLeft = c.ValLeft;
         ValRight = c.ValRight;
         RowHeight = Math.Clamp(c.RowHeight, 10, 32);
+        AskQuoteRowCount = Math.Clamp(c.AskQuoteRowCount, 5, 100);
+        BidQuoteRowCount = Math.Clamp(c.BidQuoteRowCount, 5, 100);
         SetOrderPlacementModeFromLegacyRadio(c.RboA, c.RboB);
         CbNearby = c.CbNearby;
         CbOnlyOpen = c.CbOnlyOpen;
@@ -304,6 +312,8 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             ValLeft = ValLeft,
             ValRight = ValRight,
             RowHeight = Math.Clamp(RowHeight, 10, 32),
+            AskQuoteRowCount = Math.Clamp(AskQuoteRowCount, 5, 100),
+            BidQuoteRowCount = Math.Clamp(BidQuoteRowCount, 5, 100),
             RboA = RboA,
             RboB = RboB,
             CbNearby = CbNearby,
@@ -390,6 +400,31 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
 
     /// <summary>CbOnlyOpen 变更时通知 OpenCloseMark 刷新。</summary>
     partial void OnCbOnlyOpenChanged(bool value) => OnPropertyChanged(nameof(OpenCloseMark));
+
+    partial void OnPriceLadderChanged(PriceLadder? value) =>
+        OnPropertyChanged(nameof(PriceLadderStructureSummary));
+
+    partial void OnAskQuoteRowCountChanged(int value)
+    {
+        var clamped = Math.Clamp(value, 5, 100);
+        if (value != clamped)
+        {
+            AskQuoteRowCount = clamped;
+            return;
+        }
+        RebuildPriceLadder();
+    }
+
+    partial void OnBidQuoteRowCountChanged(int value)
+    {
+        var clamped = Math.Clamp(value, 5, 100);
+        if (value != clamped)
+        {
+            BidQuoteRowCount = clamped;
+            return;
+        }
+        RebuildPriceLadder();
+    }
 
     partial void OnOrderPlacementModeChanged(OrderPlacementMode value)
     {
@@ -584,7 +619,8 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             if (_disposed) return;
             RecordRelevantMarketUpdates(_lastMarketData, data, DateTime.Now);
             _lastMarketData = data;
-            PriceLadder = data.ToPriceLadder(_priceTick, PriceLadderLevels, BuildPendingByPrice());
+            PriceLadder = data.ToPriceLadder(
+                _priceTick, AskQuoteRowCount, BidQuoteRowCount, BuildPendingByPrice());
             OpenPrice = data.OpenPrice;
             HighPrice = data.HighestPrice;
             LowPrice = data.LowestPrice;
@@ -604,7 +640,8 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         MarshalToUi(() =>
         {
             if (_disposed || _lastMarketData is null) return;
-            PriceLadder = _lastMarketData.ToPriceLadder(_priceTick, PriceLadderLevels, BuildPendingByPrice());
+            PriceLadder = _lastMarketData.ToPriceLadder(
+                _priceTick, AskQuoteRowCount, BidQuoteRowCount, BuildPendingByPrice());
         });
     }
 

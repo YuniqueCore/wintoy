@@ -38,68 +38,69 @@ public sealed record DepthMarketData
     public IReadOnlyList<int> AskVolumes { get; init; } = Array.Empty<int>();
 
     /// <summary>
-    /// 按价差居中语义生成价格梯：以 <see cref="LastPrice"/> 为中心、<paramref name="priceTick"/> 为步长，
-    /// 上下各 <paramref name="levels"/> 档。中心行标注 <see cref="PriceLevel.IsLastPrice"/>。
-    /// 5 档买卖盘按价位就近填充（中心上方卖盘、下方买盘）。
+    /// 以真实卖一/买一为边界生成价格梯：卖一向上生成 <paramref name="askQuoteRowCount"/> 行，
+    /// 买一向下生成 <paramref name="bidQuoteRowCount"/> 行，二者之间的白格完全按价差自动生成。
+    /// 5 档买卖盘只按真实价位填量，延伸区域绝不伪造盘口量。
     /// <para>
     /// <paramref name="pendingByPrice"/> 可选：把外部维护的「价格 → 用户本地挂单数」聚合传入，
     /// 让 <see cref="PriceLevel.PendingOrderCount"/> 在 UI 第 0 列直接显示（点击可撤单）。
     /// 留空时所有 <see cref="PriceLevel.PendingOrderCount"/> = 0。
     /// </para>
     /// </summary>
-    public PriceLadder ToPriceLadder(decimal priceTick, int levels, IReadOnlyDictionary<decimal, int>? pendingByPrice = null)
+    public PriceLadder ToPriceLadder(
+        decimal priceTick,
+        int askQuoteRowCount,
+        int bidQuoteRowCount,
+        IReadOnlyDictionary<decimal, int>? pendingByPrice = null)
     {
         if (priceTick <= 0) priceTick = 1m;
-        if (levels <= 0) levels = 5;
+        askQuoteRowCount = NormalizeRowCount(askQuoteRowCount);
+        bidQuoteRowCount = NormalizeRowCount(bidQuoteRowCount);
         pendingByPrice ??= new Dictionary<decimal, int>();
 
         var bestAsk = FindBestQuotedPrice(AskPrices, AskVolumes, findMinimum: true);
         var bestBid = FindBestQuotedPrice(BidPrices, BidVolumes, findMinimum: false);
-        var rows = new List<PriceLevel>(levels * 2 + 1);
-        // 卖一边界及更高价位属于卖方显示区；CTP 没有深度量的价位仍然可点击下单。
-        for (int i = levels; i >= 1; i--)
-        {
-            var price = LastPrice + i * priceTick;
-            var askVolume = VolumeAt(price, AskPrices, AskVolumes, priceTick);
-            var bidVolume = VolumeAt(price, BidPrices, BidVolumes, priceTick);
-            rows.Add(new PriceLevel
-            {
-                Price = price,
-                AskVolume = askVolume,
-                BidVolume = bidVolume,
-                PendingOrderCount = LookupPending(pendingByPrice, price, priceTick),
-                DisplayZone = ResolveDisplayZone(price, bestAsk, bestBid, askVolume, bidVolume)
-            });
-        }
-        // 最新价可能在买卖价差中；最新价标记与报价显示区分开。
-        var centerAskVolume = VolumeAt(LastPrice, AskPrices, AskVolumes, priceTick);
-        var centerBidVolume = VolumeAt(LastPrice, BidPrices, BidVolumes, priceTick);
-        rows.Add(new PriceLevel
-        {
-            Price = LastPrice,
-            IsLastPrice = true,
-            AskVolume = centerAskVolume,
-            BidVolume = centerBidVolume,
-            PendingOrderCount = LookupPending(pendingByPrice, LastPrice, priceTick),
-            DisplayZone = ResolveDisplayZone(LastPrice, bestAsk, bestBid, centerAskVolume, centerBidVolume)
-        });
-        // 买一边界及更低价位属于买方显示区；只有买一与卖一之间保留白格。
-        for (int i = 1; i <= levels; i++)
-        {
-            var price = LastPrice - i * priceTick;
-            var bidVolume = VolumeAt(price, BidPrices, BidVolumes, priceTick);
-            var askVolume = VolumeAt(price, AskPrices, AskVolumes, priceTick);
-            rows.Add(new PriceLevel
-            {
-                Price = price,
-                BidVolume = bidVolume,
-                AskVolume = askVolume,
-                PendingOrderCount = LookupPending(pendingByPrice, price, priceTick),
-                DisplayZone = ResolveDisplayZone(price, bestAsk, bestBid, askVolume, bidVolume)
-            });
-        }
-        return new PriceLadder(levels, LastPrice, priceTick, rows);
+        var askAnchor = bestAsk ?? LastPrice + priceTick;
+        var bidAnchor = bestBid ?? LastPrice - priceTick;
+        var prices = new HashSet<decimal>();
+
+        for (var index = askQuoteRowCount - 1; index >= 0; index--)
+            prices.Add(askAnchor + index * priceTick);
+
+        for (var price = askAnchor - priceTick; price > bidAnchor; price -= priceTick)
+            prices.Add(price);
+
+        for (var index = 0; index < bidQuoteRowCount; index++)
+            prices.Add(bidAnchor - index * priceTick);
+
+        var rows = prices
+            .OrderDescending()
+            .Select(price => CreateLevel(price, priceTick, bestAsk, bestBid, pendingByPrice))
+            .ToArray();
+        return new PriceLadder(LastPrice, priceTick, rows);
     }
+
+    private PriceLevel CreateLevel(
+        decimal price,
+        decimal priceTick,
+        decimal? bestAsk,
+        decimal? bestBid,
+        IReadOnlyDictionary<decimal, int> pendingByPrice)
+    {
+        var askVolume = VolumeAt(price, AskPrices, AskVolumes, priceTick);
+        var bidVolume = VolumeAt(price, BidPrices, BidVolumes, priceTick);
+        return new PriceLevel
+        {
+            Price = price,
+            IsLastPrice = Math.Abs(price - LastPrice) < priceTick / 2m,
+            AskVolume = askVolume,
+            BidVolume = bidVolume,
+            PendingOrderCount = LookupPending(pendingByPrice, price, priceTick),
+            DisplayZone = ResolveDisplayZone(price, bestAsk, bestBid, askVolume, bidVolume)
+        };
+    }
+
+    private static int NormalizeRowCount(int count) => count <= 0 ? 30 : Math.Min(count, 100);
 
     private static decimal? FindBestQuotedPrice(
         IReadOnlyList<decimal> prices,

@@ -180,8 +180,15 @@
 
                 <!-- 右侧操作组 -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0">
-                    <ui:Button Content="切组" Padding="8,3"/>
-                    <ui:Button Content="撤组" Padding="8,3" Margin="2,0,0,0"/>
+                    <ui:Button x:Name="SwitchPreviousGroupButton"
+                               AutomationProperties.AutomationId="SwitchPreviousGroupButton"
+                               Content="切组" ToolTip="切回前一次显示的合约窗口组"
+                               Command="{Binding SwitchPreviousGroupCommand}" Padding="8,3"/>
+                    <ui:Button x:Name="WithdrawCurrentGroupButton"
+                               AutomationProperties.AutomationId="WithdrawCurrentGroupButton"
+                               Content="撤组" ToolTip="隐藏当前组，保留窗口与交易状态"
+                               Command="{Binding WithdrawCurrentGroupCommand}"
+                               Padding="8,3" Margin="2,0,0,0"/>
                     <CheckBox Content="标尺" IsChecked="{Binding ShowRuler}" Margin="6,0,0,0" VerticalAlignment="Center"/>
                     <CheckBox x:Name="ShowWhiteGridToggle" Content="白格"
                               IsChecked="{Binding ShowWhiteGrid}" Margin="6,0,0,0" VerticalAlignment="Center"/>

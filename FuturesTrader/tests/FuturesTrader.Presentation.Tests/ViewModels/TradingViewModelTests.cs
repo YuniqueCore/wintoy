@@ -54,8 +54,7 @@ public class TradingViewModelTests
             NullLogger<SimulatedMarketDataService>.Instance);
         var risk = new LocalRiskService(PermissiveConfig, NullLogger<LocalRiskService>.Instance);
         var validator = new OrderValidator(new AlwaysAllowSessionChecker(), risk);
-        var options = Options.Create(new MarketDataOptions { PriceLadderLevels = 5 });
-
+        var options = Options.Create(new MarketDataOptions());
         return new TradingViewModel(
             config ?? new InstrumentWindow { InstrumentCode = "ag2608" },
             marketData,
@@ -81,6 +80,8 @@ public class TradingViewModelTests
             ValLeft = 3,
             ValRight = 5,
             RowHeight = 14,
+            AskQuoteRowCount = 35,
+            BidQuoteRowCount = 42,
             RboA = true,
             RboB = false,
             CbNearby = true,
@@ -102,6 +103,8 @@ public class TradingViewModelTests
         vm.ValLeft.Should().Be(3);
         vm.ValRight.Should().Be(5);
         vm.RowHeight.Should().Be(14);
+        vm.AskQuoteRowCount.Should().Be(35);
+        vm.BidQuoteRowCount.Should().Be(42);
         vm.RboA.Should().BeTrue();
         vm.RboB.Should().BeFalse();
         vm.OrderPlacementMode.Should().Be(OrderPlacementMode.ReplaceSameDirection);
@@ -132,6 +135,8 @@ public class TradingViewModelTests
             ValLeft = 2,
             ValRight = 4,
             RowHeight = 16,
+            AskQuoteRowCount = 36,
+            BidQuoteRowCount = 44,
             RboA = true,
             RboB = false,
             CbNearby = true,
@@ -172,6 +177,8 @@ public class TradingViewModelTests
         roundTripped.Height.Should().Be(800);
         roundTripped.Width.Should().Be(300);
         roundTripped.RowHeight.Should().Be(16);
+        roundTripped.AskQuoteRowCount.Should().Be(36);
+        roundTripped.BidQuoteRowCount.Should().Be(44);
         roundTripped.RboA.Should().BeTrue();
         roundTripped.RboB.Should().BeFalse();
         roundTripped.CbNearby.Should().BeTrue();
@@ -199,7 +206,29 @@ public class TradingViewModelTests
         vm.ShowWhiteGrid.Should().BeTrue();
         vm.CbZdtLock.Should().BeTrue();
         vm.CntrbySprdFctn.Should().Be(1);
-        vm.PriceLadderLevels.Should().Be(10, "过小配置应夹紧，真实窗口默认配置为每侧 20 格");
+        vm.AskQuoteRowCount.Should().Be(30);
+        vm.BidQuoteRowCount.Should().Be(30);
+    }
+
+    [Theory]
+    [InlineData(0, 5)]
+    [InlineData(4, 5)]
+    [InlineData(5, 5)]
+    [InlineData(100, 100)]
+    [InlineData(101, 100)]
+    public void Quote_row_counts_are_clamped_when_hydrated_and_persisted(int configured, int expected)
+    {
+        var vm = CreateVm(new InstrumentWindow
+        {
+            InstrumentCode = "ag2608",
+            AskQuoteRowCount = configured,
+            BidQuoteRowCount = configured
+        });
+
+        vm.AskQuoteRowCount.Should().Be(expected);
+        vm.BidQuoteRowCount.Should().Be(expected);
+        vm.ToInstrumentWindow().AskQuoteRowCount.Should().Be(expected);
+        vm.ToInstrumentWindow().BidQuoteRowCount.Should().Be(expected);
     }
 
     [Theory]

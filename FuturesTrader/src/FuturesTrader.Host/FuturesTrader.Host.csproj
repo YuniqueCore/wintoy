@@ -8,6 +8,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>assets\icons\futures-trader.ico</ApplicationIcon>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
@@ -32,6 +34,14 @@
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+
+    <!-- 同一 SVG 视觉源派生的应用资产：ICO 嵌入 EXE 并供 tray 使用，PNG/SVG 随包保留。 -->
+    <None Remove="assets\icons\futures-trader.svg" />
+    <None Remove="assets\icons\futures-trader.png" />
+    <None Remove="assets\icons\futures-trader.ico" />
+    <Content Include="assets\icons\futures-trader.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="assets\icons\futures-trader.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="assets\icons\futures-trader.ico" CopyToOutputDirectory="PreserveNewest" />
 
     <!-- CTP 6.7.13 原生行情 DLL（64 位 x64）：P/Invoke 按 DLL 名在 exe 同目录解析，必须平铺到输出根 -->
     <None Include="native\thostmduserapi_se.dll"

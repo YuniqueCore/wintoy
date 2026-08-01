@@ -25,6 +25,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Wpf.Ui.Appearance;
+using DrawingIcon = System.Drawing.Icon;
+using Forms = System.Windows.Forms;
 
 namespace FuturesTrader.Host;
 
@@ -49,6 +51,9 @@ public partial class App : System.Windows.Application
 {
     private readonly IHost _host;
     private SingleInstanceGuard? _singleInstance;
+    private Forms.NotifyIcon? _trayIcon;
+    private Forms.ContextMenuStrip? _trayMenu;
+    private Window? _primaryWindow;
 
     public App()
     {
@@ -260,6 +265,9 @@ public partial class App : System.Windows.Application
 
         await _host.StartAsync();
 
+        // EXE、WPF 窗口和 tray 均使用 assets/icons/futures-trader.ico 的同一视觉源。
+        InitializeTrayIcon();
+
         // 2. 确保 CTP 流文件目录存在（MdFlow/TraderFlow），CTP API 需要可写目录存储会话流
         EnsureFlowDirectories();
 
@@ -273,6 +281,7 @@ public partial class App : System.Windows.Application
 
         // 3. 显示登录页 + 订阅登录成功事件
         var loginWindow = _host.Services.GetRequiredService<LoginWindow>();
+        _primaryWindow = loginWindow;
         var loginVm = loginWindow.ViewModel;
         loginVm.LoginSucceeded += OnLoginSucceeded;
         loginVm.OpenSettingsRequested += OnOpenSettingsRequested;
@@ -334,6 +343,7 @@ public partial class App : System.Windows.Application
         Dispatcher.Invoke(() =>
         {
             var floating = _host.Services.GetRequiredService<FloatingMainWindow>();
+            _primaryWindow = floating;
             floating.ViewModel.LogoutRequested += OnLogoutRequested;
             floating.ViewModel.OpenSettingsRequested += OnOpenSettingsRequested;
             floating.Show();
@@ -355,6 +365,7 @@ public partial class App : System.Windows.Application
             floating.Hide();
 
             var loginWindow = _host.Services.GetRequiredService<LoginWindow>();
+            _primaryWindow = loginWindow;
             // 重置登录状态以便重新登录
             loginWindow.ViewModel.State = new LoginState.Idle();
             loginWindow.ViewModel.StatusMessage = "已登出，请重新登录";
@@ -388,23 +399,74 @@ public partial class App : System.Windows.Application
     /// <summary>单例激活：把当前主窗口置顶。</summary>
     private void OnActivateRequested()
     {
+        ShowMainInterface();
+    }
+
+    /// <summary>初始化 Windows 通知区域图标及“显示主界面/退出”菜单。</summary>
+    private void InitializeTrayIcon()
+    {
+        try
+        {
+            var iconPath = System.IO.Path.Combine(
+                AppContext.BaseDirectory, "assets", "icons", "futures-trader.ico");
+            using var sourceIcon = new DrawingIcon(iconPath);
+            _trayMenu = new Forms.ContextMenuStrip();
+            var showItem = new Forms.ToolStripMenuItem("显示主界面");
+            showItem.Click += (_, _) => ShowMainInterface();
+            var exitItem = new Forms.ToolStripMenuItem("退出");
+            exitItem.Click += (_, _) => Dispatcher.Invoke(Shutdown);
+            _trayMenu.Items.Add(showItem);
+            _trayMenu.Items.Add(new Forms.ToolStripSeparator());
+            _trayMenu.Items.Add(exitItem);
+
+            _trayIcon = new Forms.NotifyIcon
+            {
+                Icon = (DrawingIcon)sourceIcon.Clone(),
+                Text = "期货交易终端",
+                ContextMenuStrip = _trayMenu,
+                Visible = true
+            };
+            _trayIcon.DoubleClick += (_, _) => ShowMainInterface();
+            Log.Information("系统托盘图标已启用");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "初始化系统托盘图标失败");
+        }
+    }
+
+    /// <summary>从 tray 或第二实例激活请求恢复当前登录/浮动主窗口。</summary>
+    private void ShowMainInterface()
+    {
         Dispatcher.Invoke(() =>
         {
-            foreach (Window w in Current.Windows)
-            {
-                if (w is FloatingMainWindow || w is LoginWindow)
-                {
-                    w.Activate();
-                    w.Topmost = true;
-                    w.Topmost = false; // 闪烁后回落，保持 z-order
-                    break;
-                }
-            }
+            var window = _primaryWindow
+                ?? Current.Windows.OfType<Window>()
+                    .FirstOrDefault(candidate => candidate is FloatingMainWindow or LoginWindow);
+            if (window is null) return;
+            if (!window.IsVisible) window.Show();
+            if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+            window.Activate();
+            window.Topmost = true;
+            window.Topmost = false;
         });
+    }
+
+    private void DisposeTrayIcon()
+    {
+        if (_trayIcon is not null)
+        {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+            _trayIcon = null;
+        }
+        _trayMenu?.Dispose();
+        _trayMenu = null;
     }
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        DisposeTrayIcon();
         try
         {
             // 登出释放 CTP 连接

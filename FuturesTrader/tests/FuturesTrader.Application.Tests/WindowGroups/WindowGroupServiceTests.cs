@@ -151,6 +151,15 @@ public class WindowGroupServiceTests
         _host.Opened.Should().OnlyContain(w => w.GroupId == 1);
     }
 
+    [Fact]
+    public void HideGroup_delegates_without_closing_or_destroying_windows()
+    {
+        _service.HideGroup(3);
+
+        _host.HiddenGroups.Should().Equal(3);
+        _host.Closed.Should().BeEmpty("撤组只能隐藏窗口，不能触发关闭与状态销毁");
+    }
+
     // ── 边界校验 ─────────────────────────────────────────────
 
     [Theory]
@@ -178,6 +187,16 @@ public class WindowGroupServiceTests
     public void OpenGroup_throws_for_invalid_group_id(int groupId)
     {
         var act = () => _service.OpenGroup(new WindowLayout(), groupId);
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(21)]
+    public void HideGroup_throws_for_invalid_group_id(int groupId)
+    {
+        var act = () => _service.HideGroup(groupId);
+
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
 
@@ -423,6 +442,7 @@ public class WindowGroupServiceTests
         public List<InstrumentWindow> Opened { get; } = new();
         public List<string> Focused { get; } = new();
         public List<string> Closed { get; } = new();
+        public List<int> HiddenGroups { get; } = new();
 
         public bool IsOpen(string instrumentCode) => _open.Contains(instrumentCode);
 
@@ -438,6 +458,8 @@ public class WindowGroupServiceTests
         }
 
         public IReadOnlyList<string> GetOpenWindowsInGroup(int groupId) => _open.ToList();
+
+        public void HideGroup(int groupId) => HiddenGroups.Add(groupId);
 
         public void CloseGroup(int groupId)
         {

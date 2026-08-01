@@ -43,7 +43,7 @@ public class PriceListLayoutTests
             AskVolumes = [31],
             BidPrices = [101m],
             BidVolumes = [29],
-        }.ToPriceLadder(priceTick: 1m, levels: 3);
+        }.ToPriceLadder(priceTick: 1m, askQuoteRowCount: 3, bidQuoteRowCount: 3);
 
         rows.Apply(next.Rows).Should().BeFalse("档数和各行显示区未变，不应重建按钮容器");
 
@@ -86,5 +86,5 @@ public class PriceListLayoutTests
         AskVolumes = [11],
         BidPrices = [99m],
         BidVolumes = [10]
-    }.ToPriceLadder(priceTick: 1m, levels: 3);
+    }.ToPriceLadder(priceTick: 1m, askQuoteRowCount: 3, bidQuoteRowCount: 3);
 }

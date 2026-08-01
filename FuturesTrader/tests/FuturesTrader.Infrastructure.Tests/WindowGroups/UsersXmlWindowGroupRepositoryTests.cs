@@ -52,6 +52,8 @@ public class UsersXmlWindowGroupRepositoryTests : IDisposable
         w.CbZdtLock.Should().BeTrue();
         w.CntrbySprdId.Should().Be("ag");
         w.CntrbySprdFctn.Should().Be(1);
+        w.AskQuoteRowCount.Should().Be(30, "旧 Users.xml 未包含新属性时使用产品默认值");
+        w.BidQuoteRowCount.Should().Be(30);
     }
 
     [Fact]
@@ -136,7 +138,11 @@ public class UsersXmlWindowGroupRepositoryTests : IDisposable
             UserId = "338897",
             Windows =
             [
-                new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 1, Top = 10, Left = 20 },
+                new InstrumentWindow
+                {
+                    InstrumentCode = "ag2608", GroupId = 1, Top = 10, Left = 20,
+                    AskQuoteRowCount = 35, BidQuoteRowCount = 42
+                },
                 new InstrumentWindow { InstrumentCode = "cu2609", GroupId = 5, Top = 30, Left = 40 }
             ],
             Groups = WindowLayout.CreateDefaultGroups()
@@ -148,6 +154,8 @@ public class UsersXmlWindowGroupRepositoryTests : IDisposable
         reloaded.Windows.Should().HaveCount(2);
         reloaded.Windows.Should().Contain(w => w.InstrumentCode == "ag2608" && w.GroupId == 1 && w.Top == 10);
         reloaded.Windows.Should().Contain(w => w.InstrumentCode == "cu2609" && w.GroupId == 5 && w.Top == 30);
+        reloaded.Windows.Single(w => w.InstrumentCode == "ag2608").Should().Match<InstrumentWindow>(w =>
+            w.AskQuoteRowCount == 35 && w.BidQuoteRowCount == 42);
     }
 
     [Fact]

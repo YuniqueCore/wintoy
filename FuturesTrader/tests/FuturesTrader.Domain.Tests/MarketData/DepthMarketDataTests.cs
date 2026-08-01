@@ -4,24 +4,22 @@ using FuturesTrader.Domain.MarketData;
 namespace FuturesTrader.Domain.Tests.MarketData;
 
 /// <summary>
-/// <see cref="DepthMarketData.ToPriceLadder"/> 映射测试：
-/// 中心对称、IsLastPrice 唯一、5 档边界、价位就近匹配买卖盘量、PriceTick 步长。
-/// 纯函数测试，无外部依赖。
+/// <see cref="DepthMarketData.ToPriceLadder"/> 边界驱动映射测试：
+/// 卖一区、买一区分别按配置生成，二者之间的无人报价白格完全按价差自动计算。
 /// </summary>
 public class DepthMarketDataTests
 {
     private static DepthMarketData BuildSnapshot(
         decimal last = 100m,
-        decimal tick = 1m,
         decimal[]? bidPrices = null,
         int[]? bidVolumes = null,
         decimal[]? askPrices = null,
         int[]? askVolumes = null)
     {
-        bidPrices ??= new[] { 99m, 98m, 97m, 96m, 95m };
-        bidVolumes ??= new[] { 10, 20, 30, 40, 50 };
-        askPrices ??= new[] { 101m, 102m, 103m, 104m, 105m };
-        askVolumes ??= new[] { 11, 21, 31, 41, 51 };
+        bidPrices ??= [99m, 98m, 97m, 96m, 95m];
+        bidVolumes ??= [10, 20, 30, 40, 50];
+        askPrices ??= [101m, 102m, 103m, 104m, 105m];
+        askVolumes ??= [11, 21, 31, 41, 51];
         return new DepthMarketData
         {
             InstrumentId = "ag2608",
@@ -34,112 +32,104 @@ public class DepthMarketDataTests
     }
 
     [Fact]
-    public void ToPriceLadder_produces_2n_plus_1_rows()
+    public void ToPriceLadder_defaults_to_thirty_ask_auto_white_thirty_bid_rows()
     {
-        var data = BuildSnapshot();
-        var ladder = data.ToPriceLadder(priceTick: 1m, levels: 5);
-        ladder.Rows.Should().HaveCount(11, "5 档上下 + 1 中心 = 11 行");
-        ladder.CenterIndex.Should().Be(5);
+        var ladder = BuildSnapshot().ToPriceLadder(priceTick: 1m, askQuoteRowCount: 30, bidQuoteRowCount: 30);
+
+        ladder.AskQuoteRowCount.Should().Be(30);
+        ladder.UnquotedRowCount.Should().Be(1, "卖一 101 与买一 99 之间只有 100 一个白格");
+        ladder.BidQuoteRowCount.Should().Be(30);
+        ladder.Rows.Should().HaveCount(61);
+        ladder.Rows[0].Price.Should().Be(130m);
+        ladder.Rows[^1].Price.Should().Be(70m);
     }
 
     [Fact]
-    public void ToPriceLadder_supports_twenty_visible_levels_per_side()
+    public void ToPriceLadder_calculates_multiple_white_rows_from_spread()
     {
-        var ladder = BuildSnapshot().ToPriceLadder(priceTick: 1m, levels: 20);
+        var ladder = BuildSnapshot(
+            bidPrices: [99m], bidVolumes: [10],
+            askPrices: [104m], askVolumes: [11])
+            .ToPriceLadder(priceTick: 1m, askQuoteRowCount: 5, bidQuoteRowCount: 6);
 
-        ladder.Rows.Should().HaveCount(41);
-        ladder.CenterIndex.Should().Be(20);
+        ladder.AskQuoteRowCount.Should().Be(5);
+        ladder.UnquotedRowCount.Should().Be(4);
+        ladder.BidQuoteRowCount.Should().Be(6);
+        ladder.Rows.Where(row => row.DisplayZone == PriceDisplayZone.Unquoted)
+            .Select(row => row.Price)
+            .Should().Equal(103m, 102m, 101m, 100m);
     }
 
     [Fact]
-    public void ToPriceLadder_center_row_marks_is_last_price_unique()
+    public void ToPriceLadder_uses_price_tick_for_all_regions()
     {
-        var data = BuildSnapshot(last: 100m, tick: 1m);
-        var ladder = data.ToPriceLadder(priceTick: 1m, levels: 5);
-        var centerRows = ladder.Rows.Where(r => r.IsLastPrice).ToList();
-        centerRows.Should().HaveCount(1, "只有中心行标记 IsLastPrice");
-        ladder.Center!.IsLastPrice.Should().BeTrue();
+        var ladder = BuildSnapshot(
+            bidPrices: [98m], bidVolumes: [10],
+            askPrices: [102m], askVolumes: [11])
+            .ToPriceLadder(priceTick: 2m, askQuoteRowCount: 3, bidQuoteRowCount: 3);
+
+        ladder.Rows.Select(row => row.Price).Should().Equal(106m, 104m, 102m, 100m, 98m, 96m, 94m);
+        ladder.UnquotedRowCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void ToPriceLadder_marks_last_price_and_finds_its_real_index()
+    {
+        var ladder = BuildSnapshot().ToPriceLadder(priceTick: 1m, askQuoteRowCount: 7, bidQuoteRowCount: 9);
+
+        ladder.Rows.Should().ContainSingle(row => row.IsLastPrice);
+        ladder.CenterIndex.Should().Be(7, "中心索引来自真实 IsLastPrice 行，不再假设等于对称 levels");
         ladder.Center!.Price.Should().Be(100m);
     }
 
     [Fact]
-    public void ToPriceLadder_uses_price_tick_as_step()
+    public void ToPriceLadder_maps_five_depth_volumes_without_fabricating_outer_levels()
     {
-        var data = BuildSnapshot(last: 100m, tick: 2m);
-        var ladder = data.ToPriceLadder(priceTick: 2m, levels: 3);
-        // 上方卖盘：100+2*3=106, 100+2*2=104, 100+2*1=102
-        ladder.Rows[0].Price.Should().Be(106m);
-        ladder.Rows[1].Price.Should().Be(104m);
-        ladder.Rows[2].Price.Should().Be(102m);
-        ladder.Center!.Price.Should().Be(100m);
-        // 下方买盘：100-2*1=98, 100-2*2=96, 100-2*3=94
-        ladder.Rows[4].Price.Should().Be(98m);
-        ladder.Rows[5].Price.Should().Be(96m);
-        ladder.Rows[6].Price.Should().Be(94m);
+        var ladder = BuildSnapshot().ToPriceLadder(priceTick: 1m, askQuoteRowCount: 8, bidQuoteRowCount: 8);
+
+        ladder.Rows.Single(row => row.Price == 105m).AskVolume.Should().Be(51);
+        ladder.Rows.Single(row => row.Price == 95m).BidVolume.Should().Be(50);
+        ladder.Rows.Single(row => row.Price == 108m).AskVolume.Should().Be(0,
+            "延伸卖方可点击区域不能伪造 CTP 五档之外的量");
+        ladder.Rows.Single(row => row.Price == 92m).BidVolume.Should().Be(0,
+            "延伸买方可点击区域不能伪造 CTP 五档之外的量");
     }
 
     [Fact]
-    public void ToPriceLadder_upper_rows_are_ask_lower_rows_are_bid()
+    public void ToPriceLadder_clamps_invalid_tick_and_row_counts()
     {
-        var data = BuildSnapshot(last: 100m, tick: 1m);
-        var ladder = data.ToPriceLadder(priceTick: 1m, levels: 5);
-        // 上方第一行（最高价 105）对应 AskVolume，无 BidVolume
-        var top = ladder.Rows[0];
-        top.Price.Should().Be(105m);
-        top.AskVolume.Should().Be(51, "AskPrice5=105 的量");
-        top.BidVolume.Should().Be(0);
-        // 下方第一行（最低价 95）对应 BidVolume，无 AskVolume
-        var bottom = ladder.Rows[10];
-        bottom.Price.Should().Be(95m);
-        bottom.BidVolume.Should().Be(50, "BidPrice5=95 的量");
-        bottom.AskVolume.Should().Be(0);
-    }
+        var ladder = BuildSnapshot().ToPriceLadder(priceTick: 0m, askQuoteRowCount: 0, bidQuoteRowCount: 999);
 
-    [Fact]
-    public void ToPriceLadder_clamps_invalid_tick_and_levels()
-    {
-        var data = BuildSnapshot();
-        // tick=0 应兜底为 1；levels=0 应兜底为 5
-        var ladder = data.ToPriceLadder(priceTick: 0m, levels: 0);
         ladder.PriceTick.Should().Be(1m);
-        ladder.Levels.Should().Be(5);
-        ladder.Rows.Should().HaveCount(11);
+        ladder.AskQuoteRowCount.Should().Be(30, "非法非正数回退到产品默认 30");
+        ladder.BidQuoteRowCount.Should().Be(100, "防止异常配置生成无界 UI 行");
     }
 
     [Fact]
-    public void ToPriceLadder_handles_empty_books()
+    public void ToPriceLadder_handles_empty_books_without_inventing_quote_zones()
     {
-        var data = BuildSnapshot(
-            bidPrices: Array.Empty<decimal>(),
-            bidVolumes: Array.Empty<int>(),
-            askPrices: Array.Empty<decimal>(),
-            askVolumes: Array.Empty<int>());
-        var ladder = data.ToPriceLadder(priceTick: 1m, levels: 3);
-        // 无买卖盘数据时，所有行量为 0，但中心行仍标记 IsLastPrice
-        ladder.Rows.Should().HaveCount(7);
+        var ladder = BuildSnapshot(
+            bidPrices: [], bidVolumes: [], askPrices: [], askVolumes: [])
+            .ToPriceLadder(priceTick: 1m, askQuoteRowCount: 3, bidQuoteRowCount: 4);
+
+        ladder.Rows.Should().HaveCount(8, "回退边界提供 3 + 最新价白格 + 4 个连续可点击价位");
         ladder.Center!.IsLastPrice.Should().BeTrue();
-        ladder.Rows.All(r => r.BidVolume == 0 && r.AskVolume == 0).Should().BeTrue();
-        ladder.Rows.Should().OnlyContain(row => row.DisplayZone == PriceDisplayZone.Unquoted,
-            "无人报价中间行不能被错误染成买方或卖方交易区");
+        ladder.Rows.Should().OnlyContain(row => row.DisplayZone == PriceDisplayZone.Unquoted);
+        ladder.Rows.Should().OnlyContain(row => row.BidVolume == 0 && row.AskVolume == 0);
+        ladder.AskQuoteRowCount.Should().Be(0);
+        ladder.BidQuoteRowCount.Should().Be(0);
+        ladder.UnquotedRowCount.Should().Be(8);
     }
 
     [Fact]
-    public void ToPriceLadder_extends_quote_zones_outward_from_best_prices()
+    public void ToPriceLadder_includes_pending_volume_in_each_generated_region()
     {
-        var data = BuildSnapshot(
-            bidPrices: new[] { 99m },
-            bidVolumes: new[] { 10 },
-            askPrices: new[] { 101m },
-            askVolumes: new[] { 11 });
+        var pending = new Dictionary<decimal, int> { [101m] = 3, [100m] = 2, [99m] = 4 };
 
-        var ladder = data.ToPriceLadder(priceTick: 1m, levels: 3);
+        var ladder = BuildSnapshot().ToPriceLadder(1m, 2, 2, pending);
 
-        ladder.Rows.Where(row => row.Price >= 101m)
-            .Should().OnlyContain(row => row.DisplayZone == PriceDisplayZone.AskQuote);
-        ladder.Rows.Where(row => row.Price <= 99m)
-            .Should().OnlyContain(row => row.DisplayZone == PriceDisplayZone.BidQuote);
-        ladder.Rows.Single(row => row.Price == 100m).DisplayZone.Should().Be(PriceDisplayZone.Unquoted);
-        ladder.Rows.Single(row => row.Price == 103m).AskVolume.Should().Be(0,
-            "扩展显示区不能伪造 CTP 五档之外的委托量");
+        ladder.Rows.Single(row => row.Price == 101m).PendingOrderCount.Should().Be(3);
+        ladder.Rows.Single(row => row.Price == 100m).PendingOrderCount.Should().Be(2);
+        ladder.Rows.Single(row => row.Price == 99m).PendingOrderCount.Should().Be(4);
     }
 }

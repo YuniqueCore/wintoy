@@ -25,6 +25,9 @@ public interface IWindowHost
     /// <summary>获取指定分组当前已打开的窗口集合（供同步协调器 / 持久化使用）。</summary>
     IReadOnlyList<string> GetOpenWindowsInGroup(int groupId);
 
+    /// <summary>隐藏指定分组的全部窗口，保留窗口实例及其运行时状态。</summary>
+    void HideGroup(int groupId);
+
     /// <summary>聚焦已打开的合约窗口。</summary>
     void Focus(string instrumentCode);
 

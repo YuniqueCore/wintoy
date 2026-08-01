@@ -338,6 +338,7 @@ internal sealed class NullWindowHost : IWindowHost
     public void Open(InstrumentWindow window) { }
     public void OpenGroup(IReadOnlyList<InstrumentWindow> windows, int groupId) { }
     public IReadOnlyList<string> GetOpenWindowsInGroup(int groupId) => Array.Empty<string>();
+    public void HideGroup(int groupId) { }
     public void Focus(string instrumentCode) { }
     public void Close(string instrumentCode) { }
     public void CloseGroup(int groupId) { }

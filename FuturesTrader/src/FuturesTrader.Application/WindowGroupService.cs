@@ -151,6 +151,14 @@ public sealed class WindowGroupService
         _logger.LogInformation("已打开分组 {GroupId} 的 {Count} 个窗口", groupId, windows.Length);
     }
 
+    /// <summary>隐藏指定分组的全部窗口，但不关闭、销毁或重建窗口实例。</summary>
+    public void HideGroup(int groupId)
+    {
+        ValidateGroupId(groupId);
+        _host.HideGroup(groupId);
+        _logger.LogInformation("已隐藏分组 {GroupId} 的全部窗口（保留实例）", groupId);
+    }
+
     public bool IsWindowOpen(string instrumentCode)
     {
         ValidateInstrumentCode(instrumentCode);

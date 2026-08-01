@@ -40,6 +40,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     private readonly CompositeDisposable _subscriptions = new();
     private WindowLayout? _layout;
     private readonly ObservableCollection<Instrument> _allInstruments = new();
+    private int _previousGroupId;
     private bool _disposed;
 
     public FloatingMainViewModel(
@@ -108,7 +109,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     [ObservableProperty] private FloatingOrderMode _orderMode = FloatingOrderMode.Open;
 
     /// <summary>挂单模式 A/B（与点价窗口 ChgOrder 联动）。</summary>
-    [ObservableProperty] private FloatingAbMode _abMode = FloatingAbMode.A;
+    [ObservableProperty] private FloatingAbMode _abMode = FloatingAbMode.B;
 
     /// <summary>显示范围模式选项（供 <c>SegmentedControl</c> 绑定，复刻 0527 浮动栏「单/多/全部」）。</summary>
     public IReadOnlyList<OptionItem> DisplayModeOptions { get; } = new[]
@@ -128,8 +129,8 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     /// <summary>挂单模式 A/B 选项（供 <c>SegmentedControl</c> 绑定，对齐 0527 Users.xml RBOA/RBOB）。</summary>
     public IReadOnlyList<OptionItem> AbModeOptions { get; } = new[]
     {
-        new OptionItem(FloatingAbMode.A, "A", "单方向单点（RBOA）"),
-        new OptionItem(FloatingAbMode.B, "B", "单方向多点（RBOB）"),
+        new OptionItem(FloatingAbMode.A, "A", "撤同方向活动单后替换（RBOA）"),
+        new OptionItem(FloatingAbMode.B, "B", "保留同方向活动单并追加（RBOB）"),
     };
 
     /// <summary>标尺开关（显示价格标尺）。</summary>
@@ -235,8 +236,11 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
         try
         {
             // 关闭窗口会回写 Users.xml；每次切组重新读，避免拿旧快照覆盖刚持久化的 A/B/仓平设置。
+            var currentGroupId = SelectedGroupId;
             _layout = _groupService.Load();
             _groupService.OpenGroup(_layout, groupId);
+            if (currentGroupId >= 1 && currentGroupId != groupId)
+                _previousGroupId = currentGroupId;
             SelectedGroupId = groupId;
             foreach (var btn in Groups) btn.IsSelected = btn.Id == groupId;
             RefreshGroupButtons();
@@ -244,6 +248,48 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
         catch (Exception ex)
         {
             _logger.LogError(ex, "打开分组 {GroupId} 失败", groupId);
+        }
+    }
+
+    /// <summary>切回前一次显示的分组；每次成功后交换当前组与前组，支持连续往返。</summary>
+    [RelayCommand]
+    private void SwitchPreviousGroup()
+    {
+        if (_previousGroupId < 1 || _previousGroupId == SelectedGroupId) return;
+
+        try
+        {
+            var targetGroupId = _previousGroupId;
+            var outgoingGroupId = SelectedGroupId;
+            _layout = _groupService.Load();
+            _groupService.OpenGroup(_layout, targetGroupId);
+            _previousGroupId = outgoingGroupId;
+            SelectedGroupId = targetGroupId;
+            foreach (var button in Groups) button.IsSelected = button.Id == targetGroupId;
+            RefreshGroupButtons();
+            _logger.LogInformation("已切回分组 {GroupId}，前组更新为 {PreviousGroupId}",
+                targetGroupId, _previousGroupId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "切回前一分组 {GroupId} 失败", _previousGroupId);
+        }
+    }
+
+    /// <summary>隐藏当前分组的全部窗口；保留窗口实例、逻辑组号和前组历史。</summary>
+    [RelayCommand]
+    private void WithdrawCurrentGroup()
+    {
+        if (SelectedGroupId < 1) return;
+
+        try
+        {
+            _groupService.HideGroup(SelectedGroupId);
+            foreach (var button in Groups) button.IsSelected = false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "隐藏当前分组 {GroupId} 失败", SelectedGroupId);
         }
     }
 

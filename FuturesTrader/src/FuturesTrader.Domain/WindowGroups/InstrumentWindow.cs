@@ -23,6 +23,12 @@ public sealed record InstrumentWindow
     public int ValRight { get; init; } = 2;
     public int RowHeight { get; init; } = 12;
 
+    /// <summary>卖一边界向上的空方显示行数；每个合约窗口独立配置。</summary>
+    public int AskQuoteRowCount { get; init; } = 30;
+
+    /// <summary>买一边界向下的多方显示行数；每个合约窗口独立配置。</summary>
+    public int BidQuoteRowCount { get; init; } = 30;
+
     /// <summary>卖一价靠左/买一价靠右开关（RBOA 属性）。</summary>
     public bool RboA { get; init; }
 

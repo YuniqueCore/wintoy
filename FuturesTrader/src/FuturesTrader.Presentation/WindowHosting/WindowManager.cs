@@ -384,6 +384,26 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
     }
 
     /// <inheritdoc />
+    public void HideGroup(int groupId) => OnUi(() =>
+    {
+        List<Window> toHide;
+        lock (_open)
+        {
+            toHide = _open.Values
+                .Where(tracked => tracked.GroupId == groupId)
+                .Select(tracked => tracked.Window)
+                .ToList();
+        }
+
+        foreach (var window in toHide)
+        {
+            if (window.IsVisible) window.Hide();
+        }
+
+        _logger.LogInformation("已隐藏分组 {GroupId} 的 {Count} 个窗口（实例仍存活）", groupId, toHide.Count);
+    });
+
+    /// <inheritdoc />
     public void Focus(string instrumentCode) => OnUi(() =>
     {
         lock (_open)

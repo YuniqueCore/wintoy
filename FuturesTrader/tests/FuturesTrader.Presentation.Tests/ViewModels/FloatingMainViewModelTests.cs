@@ -85,8 +85,55 @@ public class FloatingMainViewModelTests
 
         vm.DisplayMode.Should().Be(FloatingDisplayMode.Single);
         vm.OrderMode.Should().Be(FloatingOrderMode.Open);
-        vm.AbMode.Should().Be(FloatingAbMode.A);
+        vm.AbMode.Should().Be(FloatingAbMode.B,
+            "合约窗口和 Users.xml 的安全默认均为 B，浮动栏必须与实际下单模式一致");
         vm.ShowWhiteGrid.Should().BeTrue("白格默认应勾选并显示无人报价价位行");
+    }
+
+    [Fact]
+    public void Withdraw_group_hides_current_instances_and_clears_only_visual_selection()
+    {
+        var host = new StubWindowHost();
+        var vm = CreateVm(windowHost: host);
+        vm.OpenGroupFromButton(3);
+
+        vm.WithdrawCurrentGroupCommand.Execute(null);
+
+        host.HiddenGroups.Should().Equal(3);
+        host.ClosedGroups.Should().BeEmpty("撤组必须保留窗口实例、订单状态和行情订阅");
+        vm.SelectedGroupId.Should().Be(3, "撤组后仍保留当前逻辑组，搜索添加合约仍有明确目标");
+        vm.Groups.Should().OnlyContain(group => !group.IsSelected);
+    }
+
+    [Fact]
+    public void Switch_previous_group_alternates_between_current_and_previous_instances()
+    {
+        var host = new StubWindowHost();
+        var vm = CreateVm(windowHost: host);
+        vm.OpenGroupFromButton(3);
+        vm.OpenGroupFromButton(2);
+
+        vm.SwitchPreviousGroupCommand.Execute(null);
+        vm.SelectedGroupId.Should().Be(3);
+        vm.Groups.Single(group => group.Id == 3).IsSelected.Should().BeTrue();
+
+        vm.SwitchPreviousGroupCommand.Execute(null);
+        vm.SelectedGroupId.Should().Be(2);
+        vm.Groups.Single(group => group.Id == 2).IsSelected.Should().BeTrue();
+        host.OpenedGroups.Should().Equal(3, 2, 3, 2);
+    }
+
+    [Fact]
+    public void Switch_previous_group_before_two_distinct_groups_is_a_noop()
+    {
+        var host = new StubWindowHost();
+        var vm = CreateVm(windowHost: host);
+        vm.OpenGroupFromButton(3);
+
+        vm.SwitchPreviousGroupCommand.Execute(null);
+
+        host.OpenedGroups.Should().Equal(3);
+        vm.SelectedGroupId.Should().Be(3);
     }
 
     // ── SyncMode 变化触发 IsSyncGrouped 通知 ──────────
@@ -197,10 +244,10 @@ public class FloatingMainViewModelTests
         var interaction = new StubTradingWindowInteractionService();
         var vm = CreateVm(interaction: interaction);
 
-        vm.AbMode = FloatingAbMode.B;
+        vm.AbMode = FloatingAbMode.A;
 
         interaction.PlacementModeUpdates.Should().ContainSingle()
-            .Which.Should().Be(OrderPlacementMode.Append);
+            .Which.Should().Be(OrderPlacementMode.ReplaceSameDirection);
     }
 
     [Fact]
@@ -265,13 +312,18 @@ public class FloatingMainViewModelTests
     /// <summary>测试用窗口宿主桩：所有方法 no-op。</summary>
     private sealed class StubWindowHost : IWindowHost
     {
+        public List<int> OpenedGroups { get; } = [];
+        public List<int> HiddenGroups { get; } = [];
+        public List<int> ClosedGroups { get; } = [];
+
         public bool IsOpen(string instrumentCode) => false;
         public void Open(InstrumentWindow window) { }
-        public void OpenGroup(IReadOnlyList<InstrumentWindow> windows, int groupId) { }
+        public void OpenGroup(IReadOnlyList<InstrumentWindow> windows, int groupId) => OpenedGroups.Add(groupId);
         public IReadOnlyList<string> GetOpenWindowsInGroup(int groupId) => Array.Empty<string>();
+        public void HideGroup(int groupId) => HiddenGroups.Add(groupId);
         public void Focus(string instrumentCode) { }
         public void Close(string instrumentCode) { }
-        public void CloseGroup(int groupId) { }
+        public void CloseGroup(int groupId) => ClosedGroups.Add(groupId);
     }
 
     /// <summary>记录浮动栏向已创建窗口广播的意图，不创建或窥探任何窗口实例。</summary>

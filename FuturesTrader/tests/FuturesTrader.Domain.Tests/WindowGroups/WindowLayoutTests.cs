@@ -47,6 +47,8 @@ public class WindowLayoutTests
         w.RowHeight.Should().Be(12);
         w.RboA.Should().BeFalse();
         w.RboB.Should().BeTrue("Users.xml ag/jd 族 RBOB=true");
+        w.AskQuoteRowCount.Should().Be(30);
+        w.BidQuoteRowCount.Should().Be(30);
         w.CntrbySprdFctn.Should().Be(1);
         w.CbBgds.Should().BeTrue();
         w.CbZdtLock.Should().BeTrue();

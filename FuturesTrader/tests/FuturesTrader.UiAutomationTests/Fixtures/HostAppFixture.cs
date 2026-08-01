@@ -57,6 +57,7 @@ public sealed class HostAppFixture : IAsyncLifetime
         if (!File.Exists(hostExe))
             throw new FileNotFoundException(
                 $"Host exe 未找到。请先 build Host 项目。路径: {hostExe}", hostExe);
+        ResetRuntimeData(hostExe);
 
         // 3. 启动 Host（工作目录设为 exe 目录，确保 appsettings.json/data/ 相对路径解析正确）
         var startInfo = new ProcessStartInfo
@@ -97,6 +98,33 @@ public sealed class HostAppFixture : IAsyncLifetime
         EnsureLoginWindowForeground();
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// 每轮 UI suite 从项目源数据恢复 Debug 输出数据，避免前一轮窗口关闭持久化或失败中断污染后续结果。
+    /// 仅操作 bin/Debug 运行副本，不改源 Users.xml/config.ini/HQAddress.xml。
+    /// </summary>
+    private static void ResetRuntimeData(string hostExe)
+    {
+        var outputDirectory = Path.GetDirectoryName(hostExe)!;
+        var hostProjectDirectory = Path.GetFullPath(Path.Combine(outputDirectory, "..", "..", ".."));
+        var sourceDataDirectory = Path.Combine(hostProjectDirectory, "data");
+        var targetDataDirectory = Path.Combine(outputDirectory, "data");
+        Directory.CreateDirectory(targetDataDirectory);
+
+        foreach (var fileName in new[] { "config.ini", "HQAddress.xml", "Users.xml" })
+        {
+            File.Copy(
+                Path.Combine(sourceDataDirectory, fileName),
+                Path.Combine(targetDataDirectory, fileName),
+                overwrite: true);
+        }
+
+        foreach (var pattern in new[] { "Users.xml.bkp*", "window-groups.json*" })
+        {
+            foreach (var generatedFile in Directory.EnumerateFiles(targetDataDirectory, pattern))
+                File.Delete(generatedFile);
+        }
     }
 
     public async Task DisposeAsync()
