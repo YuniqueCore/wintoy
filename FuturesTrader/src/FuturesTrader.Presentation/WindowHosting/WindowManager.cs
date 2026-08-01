@@ -105,6 +105,22 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
     });
 
     /// <inheritdoc />
+    public void RecenterVisiblePriceLadders(PriceLadderAnchor anchor) => OnUi(() =>
+    {
+        List<TradingWindow> visible;
+        lock (_open)
+        {
+            visible = _open.Values
+                .Select(tracked => tracked.Window)
+                .OfType<TradingWindow>()
+                .Where(window => window.IsVisible)
+                .ToList();
+        }
+        foreach (var window in visible) window.RecenterPriceLadder(anchor);
+        _logger.LogDebug("已将 {Count} 个可见价格梯定位到 {Anchor}", visible.Count, anchor);
+    });
+
+    /// <inheritdoc />
     public void Open(InstrumentWindow window) => OnUi(() =>
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -140,9 +156,8 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
             (left, top) = ComputeAppendPosition(window.GroupId, Math.Max(window.Width, 320));
         }
 
-        var tradingWindow = new TradingWindow(_keyboard, _globalCancellation)
+        var tradingWindow = new TradingWindow(_keyboard, _globalCancellation, this)
         {
-            Title = BuildTitle(window),
             Width = Math.Max(window.Width, 320),
             Height = Math.Max(window.Height, 480),
             Left = left,
@@ -417,12 +432,6 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
                 .Max();
             return ((int)(rightmost + spacing), (int)workArea.Top + 8);
         }
-    }
-
-    /// <summary>构造窗口标题：合约码 · 组号（期权场景由 ContractWindowViewModel M4-C 扩展持续时间）。</summary>
-    private static string BuildTitle(InstrumentWindow window)
-    {
-        return $"{window.InstrumentCode} · 组 {window.GroupId}";
     }
 
     /// <summary>在 UI 线程执行；无 WPF 应用上下文时（如单元测试）直接内联执行。</summary>

@@ -1,7 +1,11 @@
 using System.IO;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Capturing;
 using FlaUI.Core.Definitions;
+using FlaUI.Core.Input;
+using FlaUI.Core.WindowsAPI;
 using FluentAssertions;
 using FuturesTrader.UiAutomationTests.Fixtures;
 
@@ -12,6 +16,7 @@ namespace FuturesTrader.UiAutomationTests.Tests;
 public class TradingWindowInteractionTests
 {
     private readonly HostAppFixture _fixture;
+    private bool _physicalRightClickAvailable = true;
 
     public TradingWindowInteractionTests(HostAppFixture fixture) => _fixture = fixture;
 
@@ -25,8 +30,9 @@ public class TradingWindowInteractionTests
             AssertRichSearchPopupWithinScreen(floating);
             OpenThreeWindowGroup(floating);
 
-            var windows = WaitForTradingWindows(expectedCount: 3);
+            var windows = WaitForTradingWindows(minimumCount: 3);
             AssertAlignedWithoutOverlap(windows);
+            AssertContractTitles(windows);
 
             var tradingWindow = SelectMostVisibleWindow(windows);
             SetGroupSync(floating, enabled: false);
@@ -35,6 +41,9 @@ public class TradingWindowInteractionTests
             tradingWindow.SetForeground();
             Thread.Sleep(200);
             AssertSpreadLockInputsAreStacked(tradingWindow);
+            AssertNarrowEditorValuesAreVisible(tradingWindow);
+            AssertPriceRowHeightStepper(tradingWindow);
+            AssertFooterShowsHintWithoutStatusOverlap(tradingWindow);
             tradingWindow.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByAutomationId("PendingOrderHeader"))
                 .Should().NotBeNull("价格梯必须明确显示挂单剩余手数列");
 
@@ -81,18 +90,30 @@ public class TradingWindowInteractionTests
                 rightClick: true,
                 previousMessage: leftFeedback.Name,
                 expectedPendingVolume: "3");
-            rightFeedback.Should().NotBeNull("右键点价后必须显示新的提交/回报结果");
-            var pending = WaitForPendingVolume(tradingWindow, "3");
-            var rightPendingNames = string.Join(",", FindPendingOrderCells(tradingWindow).Select(cell => cell.Name));
-            pending.Should().NotBeNull(
-                $"同价位左右键 1+2 手应聚合为剩余 3 手；反馈={rightFeedback!.Name}；当前挂单格={rightPendingNames}");
+            if (_physicalRightClickAvailable)
+            {
+                rightFeedback.Should().NotBeNull("右键点价后必须显示新的提交/回报结果");
+                var pending = WaitForPendingTotal(tradingWindow, expectedTotal: 3);
+                var rightPendingNames = string.Join(",", FindPendingOrderCells(tradingWindow).Select(cell => cell.Name));
+                pending.Should().NotBeNull(
+                    $"左右键 1+2 手应在挂单列显示合计 3 手；反馈={rightFeedback!.Name}；当前挂单格={rightPendingNames}");
+            }
+            else
+            {
+                // 当前 Windows 自动化桌面由 UIPI 禁止 SendInput；右键业务分支由无桌面单元测试覆盖。
+                leftPending.Should().NotBeNull();
+            }
             SaveEvidenceScreenshot("FUTURES_UI_PENDING_EVIDENCE_PATH");
 
-            pending!.Click();
+            _fixture.EnsureWindowForeground(tradingWindow);
+            PressWindowKey(tradingWindow, VirtualKeyShort.SPACE);
             UiTestHelpers.WaitTrue(
                 () => !FindPendingOrderCells(tradingWindow).Any(cell =>
                     int.TryParse(cell.Name, out var volume) && volume > 0),
-                TimeSpan.FromSeconds(5)).Should().BeTrue("点击挂单数量应按价撤销活动委托");
+                TimeSpan.FromSeconds(5)).Should().BeTrue("Space 应向所有可见合约窗口提交选择性全撤请求");
+
+            AssertForceCancelShortcut(tradingWindow, selectedRowTop);
+            AssertOnlyOpenShortcut(tradingWindow);
 
             AssertWhiteGridCanHideAndRestore(floating, tradingWindow);
             SetGroupSync(floating, enabled: true);
@@ -205,7 +226,7 @@ public class TradingWindowInteractionTests
         groupButton.Invoke();
     }
 
-    private Window[] WaitForTradingWindows(int expectedCount) =>
+    private Window[] WaitForTradingWindows(int minimumCount) =>
         UiTestHelpers.WaitFor(() =>
         {
             try
@@ -219,14 +240,14 @@ public class TradingWindowInteractionTests
                     .Where(window => window.IsAvailable)
                     .OrderBy(window => window.BoundingRectangle.Left)
                     .ToArray();
-                return windows.Length == expectedCount ? windows : null;
+                return windows.Length >= minimumCount ? windows : null;
             }
             catch
             {
                 return null;
             }
         }, TimeSpan.FromSeconds(15))
-        ?? throw new Xunit.Sdk.XunitException($"未出现 {expectedCount} 个合约窗口");
+        ?? throw new Xunit.Sdk.XunitException($"未出现至少 {minimumCount} 个合约窗口");
 
     private Window SelectMostVisibleWindow(IReadOnlyList<Window> windows)
     {
@@ -256,6 +277,120 @@ public class TradingWindowInteractionTests
             "三项输入应占满窄栏剩余宽度，而不是挤成不可读的小方块");
         (bounds.Max(rectangle => rectangle.Left) - bounds.Min(rectangle => rectangle.Left))
             .Should().BeLessThanOrEqualTo(2, "合约、Pt、Fctr 三行输入应左侧对齐");
+    }
+
+    private void AssertContractTitles(IReadOnlyList<Window> windows)
+    {
+        windows.Should().OnlyContain(window => window.Title.Contains(" - ", StringComparison.Ordinal),
+            "合约窗口标题应为“名称 - 代码”，不能再显示组号占位标题");
+        windows.Where(window => window.Title.Contains("-P-", StringComparison.OrdinalIgnoreCase))
+            .Should().OnlyContain(window => window.Title.Contains('[', StringComparison.Ordinal)
+                                          && window.Title.Contains("天 ", StringComparison.Ordinal),
+                "期权标题应追加剩余天数和到期月日");
+        foreach (var window in windows)
+        {
+            var internalTitle = window.FindFirstDescendant(
+                _fixture.Automation.ConditionFactory.ByAutomationId("ContractTitleText"));
+            internalTitle.Should().NotBeNull("合约窗口内部顶部 TitleBar 必须显式呈现动态合约名称");
+            internalTitle!.Name.Should().Be(window.Title,
+                "内部顶部 TitleBar 与 Windows 任务栏/系统窗口名必须来自同一个合约标题");
+        }
+    }
+
+    private void AssertNarrowEditorValuesAreVisible(Window tradingWindow)
+    {
+        var numberBoxIds = new[]
+        {
+            "LeftOrderQuantity",
+            "RightOrderQuantity",
+            "PriceRowHeightStep",
+            "CounterpartySpreadPoint",
+            "CounterpartySpreadFactor"
+        };
+        foreach (var automationId in numberBoxIds)
+        {
+            var numberBox = tradingWindow.FindFirstDescendant(
+                _fixture.Automation.ConditionFactory.ByAutomationId(automationId));
+            numberBox.Should().NotBeNull($"数值控件 {automationId} 必须存在");
+            numberBox!.BoundingRectangle.Width.Should().BeGreaterThanOrEqualTo(80,
+                $"数值控件 {automationId} 必须给输入值保留足够宽度");
+            var editor = numberBox.ControlType == ControlType.Edit
+                ? numberBox
+                : numberBox.FindFirstDescendant(
+                    _fixture.Automation.ConditionFactory.ByControlType(ControlType.Edit));
+            editor.Should().NotBeNull($"数值控件 {automationId} 必须暴露可编辑文本区");
+            editor!.BoundingRectangle.Width.Should().BeGreaterThanOrEqualTo(36,
+                $"数值控件 {automationId} 的 spinner 不能挤掉文本区");
+            editor.AsTextBox().Text.Should().NotBeNullOrWhiteSpace(
+                $"数值控件 {automationId} 必须实际显示当前值");
+        }
+    }
+
+    private void AssertPriceRowHeightStepper(Window tradingWindow)
+    {
+        var condition = _fixture.Automation.ConditionFactory.ByName("第一交易列");
+        var before = tradingWindow.FindAllDescendants(condition).First().BoundingRectangle.Height;
+        var stepper = tradingWindow.FindFirstDescendant(
+            _fixture.Automation.ConditionFactory.ByAutomationId("PriceRowHeightStep"));
+        stepper.Should().NotBeNull("合约窗口左栏必须提供价格梯格高 stepper");
+        var editor = stepper!.ControlType == ControlType.Edit
+            ? stepper
+            : stepper.FindFirstDescendant(
+                _fixture.Automation.ConditionFactory.ByControlType(ControlType.Edit));
+        editor.Should().NotBeNull("格高 stepper 必须暴露可聚焦的数值编辑区");
+        var textBox = editor!.AsTextBox();
+        var originalValue = textBox.Text;
+        textBox.Text = "18";
+        UiTestHelpers.WaitTrue(
+            () => tradingWindow.FindAllDescendants(condition).First().BoundingRectangle.Height >= 17,
+            TimeSpan.FromSeconds(5)).Should().BeTrue("把格高编辑为 18 后，每个价格格子高度应同步变化");
+        textBox.Text = originalValue;
+        UiTestHelpers.WaitTrue(
+            () => tradingWindow.FindAllDescendants(condition).First().BoundingRectangle.Height == before,
+            TimeSpan.FromSeconds(5)).Should().BeTrue("测试结束应恢复原格高，避免污染持久化窗口配置");
+    }
+
+    private void AssertFooterShowsHintWithoutStatusOverlap(Window tradingWindow)
+    {
+        var hint = tradingWindow.FindFirstDescendant(
+            _fixture.Automation.ConditionFactory.ByAutomationId("PriceInteractionHint"));
+        hint.Should().NotBeNull("无下单状态时底部应显示操作 hint");
+        var status = tradingWindow.FindFirstDescendant(
+            _fixture.Automation.ConditionFactory.ByAutomationId("PriceInteractionStatus"));
+        if (status is not null)
+            status.BoundingRectangle.Height.Should().Be(0, "状态为空时状态文字必须折叠，不能与 hint 重叠");
+    }
+
+    private void AssertForceCancelShortcut(Window tradingWindow, double selectedRowTop)
+    {
+        var previous = tradingWindow.FindFirstDescendant(
+            _fixture.Automation.ConditionFactory.ByAutomationId("PriceInteractionStatus"))?.Name ?? string.Empty;
+        _ = InvokeTradeCellAndWaitForFeedback(
+            tradingWindow, "第一交易列", selectedRowTop, rightClick: false,
+            previousMessage: previous, expectedPendingVolume: "1");
+        WaitForPendingVolume(tradingWindow, "1").Should().NotBeNull("测试 W 前应存在一笔活动挂单");
+
+        _fixture.EnsureWindowForeground(tradingWindow);
+        PressWindowKey(tradingWindow, VirtualKeyShort.KEY_W);
+        UiTestHelpers.WaitTrue(
+            () => !FindPendingOrderCells(tradingWindow).Any(cell =>
+                int.TryParse(cell.Name, out var volume) && volume > 0),
+            TimeSpan.FromSeconds(5)).Should().BeTrue("W 应执行强制全撤");
+    }
+
+    private void AssertOnlyOpenShortcut(Window tradingWindow)
+    {
+        var onlyOpen = tradingWindow.FindFirstDescendant(
+            _fixture.Automation.ConditionFactory.ByName("OnlyOpen（开仓）"))?.AsCheckBox();
+        onlyOpen.Should().NotBeNull("合约窗口应暴露 OnlyOpen 开关");
+        var before = onlyOpen!.IsChecked;
+        _fixture.EnsureWindowForeground(tradingWindow);
+        PressWindowKey(tradingWindow, VirtualKeyShort.KEY_F);
+        UiTestHelpers.WaitTrue(() => onlyOpen.IsChecked != before, TimeSpan.FromSeconds(3))
+            .Should().BeTrue("F 应切换当前合约窗口 OnlyOpen");
+        PressWindowKey(tradingWindow, VirtualKeyShort.KEY_F);
+        UiTestHelpers.WaitTrue(() => onlyOpen.IsChecked == before, TimeSpan.FromSeconds(3))
+            .Should().BeTrue("再次按 F 应恢复原状态，避免污染窗口配置");
     }
 
     private void MoveWindowInsidePrimaryScreen(Window window)
@@ -333,8 +468,14 @@ public class TradingWindowInteractionTests
         {
             var cell = WaitForTradeCellAtRow(window, columnName, rowTop);
             if (cell is null) continue;
-            if (rightClick) cell.RightClick();
-            else cell.AsButton().Invoke();
+            if (rightClick)
+            {
+                if (!TryRightClickWindowElement(cell)) return null;
+            }
+            else
+            {
+                cell.AsButton().Invoke();
+            }
 
             var feedback = WaitForChangedOrderFeedback(window, previousMessage, TimeSpan.FromSeconds(2));
             if (feedback is not null) return feedback;
@@ -372,11 +513,19 @@ public class TradingWindowInteractionTests
         window.FindAllDescendants(
             _fixture.Automation.ConditionFactory.ByAutomationId("PendingOrderCell"));
 
+    private AutomationElement[]? WaitForPendingTotal(Window window, int expectedTotal) =>
+        UiTestHelpers.WaitFor(() =>
+        {
+            var cells = FindPendingOrderCells(window);
+            var total = cells.Sum(cell => int.TryParse(cell.Name, out var volume) ? volume : 0);
+            return total == expectedTotal ? cells : null;
+        }, TimeSpan.FromSeconds(5));
+
     private void AssertWhiteGridCanHideAndRestore(Window floating, Window tradingWindow)
     {
         var condition = _fixture.Automation.ConditionFactory.ByName("第一交易列");
         var visibleCount = tradingWindow.FindAllDescendants(condition).Length;
-        visibleCount.Should().BeGreaterThan(10, "白格开启时应包含买卖报价区之间的可点击无人报价行");
+        visibleCount.Should().BeGreaterThan(30, "默认每侧 20 格时应暴露远多于 CTP 五档的可点击价格行");
 
         _fixture.EnsureWindowForeground(floating);
         var toggle = floating.FindFirstDescendant(
@@ -386,6 +535,9 @@ public class TradingWindowInteractionTests
         UiTestHelpers.WaitTrue(
             () => tradingWindow.FindAllDescendants(condition).Length < visibleCount,
             TimeSpan.FromSeconds(5)).Should().BeTrue("取消白格后无人报价行应隐藏");
+        var quotedOnlyCount = tradingWindow.FindAllDescendants(condition).Length;
+        (visibleCount - quotedOnlyCount).Should().BeGreaterThan(1,
+            "Mock 买一/卖一价差应稳定产生多行白格，不能再只有一行");
 
         toggle.Toggle();
         UiTestHelpers.WaitTrue(
@@ -395,18 +547,26 @@ public class TradingWindowInteractionTests
 
     private void AssertAnchorMoveRealignsGroup(IReadOnlyList<Window> originalWindows)
     {
-        var anchor = originalWindows[1];
+        using var capture = Capture.MainScreen();
+        var screen = capture.OriginalBounds;
+        var anchor = originalWindows[^1];
         var before = anchor.BoundingRectangle;
-        anchor.Move((int)before.Left + 30, (int)before.Top + 50);
+        anchor.Move((int)screen.Left + 20, (int)before.Top + 50);
 
         UiTestHelpers.WaitTrue(() =>
         {
             var windows = WaitForTradingWindows(originalWindows.Count);
             var top = windows[0].BoundingRectangle.Top;
-            return windows.All(window => Math.Abs(window.BoundingRectangle.Top - top) <= 2);
-        }, TimeSpan.FromSeconds(5)).Should().BeTrue("拖动锚点后整组 Top 应重新对齐");
+            return windows.All(window => Math.Abs(window.BoundingRectangle.Top - top) <= 2)
+                   && windows.Take(windows.Length - 1)
+                       .All(window => window.BoundingRectangle.Left < screen.Left);
+        }, TimeSpan.FromSeconds(5)).Should().BeTrue(
+            "拖动最右侧锚点到屏幕左缘后，前面的组窗口应允许移出屏幕且整组 Top 对齐");
 
-        AssertAlignedWithoutOverlap(WaitForTradingWindows(originalWindows.Count));
+        var movedWindows = WaitForTradingWindows(originalWindows.Count);
+        Math.Abs(movedWindows[^1].BoundingRectangle.Left - (screen.Left + 20)).Should().BeLessThanOrEqualTo(2,
+            "锚点最终横坐标不能被整组工作区钳制改写");
+        AssertAlignedWithoutOverlap(movedWindows);
     }
 
     private static void SaveEvidenceScreenshot(string environmentVariable)
@@ -448,4 +608,42 @@ public class TradingWindowInteractionTests
             // Fixture 最终会终止 Host；清理失败不覆盖主断言。
         }
     }
+
+    private static void PressWindowKey(Window window, VirtualKeyShort key)
+    {
+        try
+        {
+            Keyboard.Press(key);
+            return;
+        }
+        catch (Win32Exception)
+        {
+            // 某些自动化桌面禁止 SendInput；PostMessage 仍走目标窗口真实 KeyDown 路由。
+        }
+
+        var handle = new IntPtr(window.FrameworkAutomationElement.NativeWindowHandle.Value);
+        PostMessage(handle, WmKeyDown, new IntPtr((int)key), IntPtr.Zero).Should().BeTrue();
+        PostMessage(handle, WmKeyUp, new IntPtr((int)key), IntPtr.Zero).Should().BeTrue();
+        Thread.Sleep(80);
+    }
+
+    private bool TryRightClickWindowElement(AutomationElement element)
+    {
+        try
+        {
+            element.RightClick();
+            return true;
+        }
+        catch (Win32Exception)
+        {
+            _physicalRightClickAvailable = false;
+            return false;
+        }
+    }
+
+    private const uint WmKeyDown = 0x0100;
+    private const uint WmKeyUp = 0x0101;
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 }

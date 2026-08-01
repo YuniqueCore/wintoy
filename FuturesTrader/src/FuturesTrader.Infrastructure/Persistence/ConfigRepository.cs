@@ -98,7 +98,8 @@ public sealed class ConfigRepository : IConfigRepository
         {
             Window = MapWindow(ini.GetValueOrDefault("Window") ?? new(StringComparer.OrdinalIgnoreCase)),
             Order = MapOrder(ini.GetValueOrDefault("Order") ?? new(StringComparer.OrdinalIgnoreCase)),
-            User = MapUser(ini.GetValueOrDefault("User") ?? new(StringComparer.OrdinalIgnoreCase))
+            User = MapUser(ini.GetValueOrDefault("User") ?? new(StringComparer.OrdinalIgnoreCase)),
+            Shortcuts = MapShortcuts(ini.GetValueOrDefault("Shortcuts") ?? new(StringComparer.OrdinalIgnoreCase))
         };
 
     private static WindowConfig MapWindow(IReadOnlyDictionary<string, string> s) => new()
@@ -142,6 +143,17 @@ public sealed class ConfigRepository : IConfigRepository
         MOrderXStop = s.GetInt("MOrderXStop", 2200),
         Pw = s.Get("PW", string.Empty),
         MOrderTimes = ParseMOrderTimes(s)
+    };
+
+    private static ShortcutConfig MapShortcuts(IReadOnlyDictionary<string, string> s) => new()
+    {
+        SelectiveCancelAll = s.Get("SelectiveCancelAll", "Space"),
+        ForceCancelAll = s.Get("ForceCancelAll", "W"),
+        RecenterAsk = s.Get("RecenterAsk", "A"),
+        RecenterBid = s.Get("RecenterBid", "D"),
+        ToggleOnlyOpen = s.Get("ToggleOnlyOpen", "F"),
+        MoveSelectionUp = s.Get("MoveSelectionUp", "Up"),
+        MoveSelectionDown = s.Get("MoveSelectionDown", "Down")
     };
 
     /// <summary>从 MOrderTime1..MOrderTime9 提取 9 个时间点。</summary>
@@ -201,6 +213,15 @@ public sealed class ConfigRepository : IConfigRepository
         yield return $"PW={c.User.Pw}";
         for (var i = 0; i < c.User.MOrderTimes.Count; i++)
             yield return $"MOrderTime{i + 1}={c.User.MOrderTimes[i]:HH:mm:ss}";
+
+        yield return "[Shortcuts]";
+        yield return $"SelectiveCancelAll={c.Shortcuts.SelectiveCancelAll}";
+        yield return $"ForceCancelAll={c.Shortcuts.ForceCancelAll}";
+        yield return $"RecenterAsk={c.Shortcuts.RecenterAsk}";
+        yield return $"RecenterBid={c.Shortcuts.RecenterBid}";
+        yield return $"ToggleOnlyOpen={c.Shortcuts.ToggleOnlyOpen}";
+        yield return $"MoveSelectionUp={c.Shortcuts.MoveSelectionUp}";
+        yield return $"MoveSelectionDown={c.Shortcuts.MoveSelectionDown}";
     }
 }
 

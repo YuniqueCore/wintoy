@@ -23,7 +23,7 @@ public sealed record OrderConfig
     /// <summary>期权最大撤单数（QQ=期权）</summary>
     public int MaxCancelQq { get; init; } = 10000;
 
-    /// <summary>最大报单数限制（0=不限制）</summary>
+    /// <summary>最大活动报单数限制（0=不限制；Canceled/Filled/Rejected 后释放）</summary>
     public int MaxInputCount { get; init; }
 
     /// <summary>最大持仓数限制（0=不限制）</summary>

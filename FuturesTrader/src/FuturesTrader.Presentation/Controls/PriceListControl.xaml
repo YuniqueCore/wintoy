@@ -110,6 +110,21 @@
             </Grid>
         </ControlTemplate>
 
+        <ControlTemplate x:Key="KeyboardSelectionTemplate" TargetType="Control">
+            <Border BorderBrush="{DynamicResource AccentFillColorDefaultBrush}" BorderThickness="2">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsKeyboardSelected}" Value="True">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+            </Border>
+        </ControlTemplate>
+
         <DataTemplate x:Key="AskRowTemplate" DataType="marketData:PriceLevel">
             <Grid Height="{Binding RowHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
                   Background="{DynamicResource PriceListAskRowBackgroundBrush}">
@@ -155,6 +170,8 @@
                 <TextBlock Grid.Column="4" Text=""/>
                 <Control Grid.ColumnSpan="5" Panel.ZIndex="10" IsHitTestVisible="False"
                          Template="{StaticResource PriceCellGridLinesTemplate}"/>
+                <Control Grid.ColumnSpan="5" Panel.ZIndex="11" IsHitTestVisible="False"
+                         Template="{StaticResource KeyboardSelectionTemplate}"/>
             </Grid>
         </DataTemplate>
 
@@ -203,6 +220,8 @@
                 <TextBlock Grid.Column="4" Text=""/>
                 <Control Grid.ColumnSpan="5" Panel.ZIndex="10" IsHitTestVisible="False"
                          Template="{StaticResource PriceCellGridLinesTemplate}"/>
+                <Control Grid.ColumnSpan="5" Panel.ZIndex="11" IsHitTestVisible="False"
+                         Template="{StaticResource KeyboardSelectionTemplate}"/>
             </Grid>
         </DataTemplate>
 
@@ -245,6 +264,8 @@
                 <TextBlock Grid.Column="4" Text=""/>
                 <Control Grid.ColumnSpan="5" Panel.ZIndex="10" IsHitTestVisible="False"
                          Template="{StaticResource PriceCellGridLinesTemplate}"/>
+                <Control Grid.ColumnSpan="5" Panel.ZIndex="11" IsHitTestVisible="False"
+                         Template="{StaticResource KeyboardSelectionTemplate}"/>
             </Grid>
         </DataTemplate>
 
@@ -292,6 +313,8 @@
                 <TextBlock Grid.Column="4" Text=""/>
                 <Control Grid.ColumnSpan="5" Panel.ZIndex="10" IsHitTestVisible="False"
                          Template="{StaticResource PriceCellGridLinesTemplate}"/>
+                <Control Grid.ColumnSpan="5" Panel.ZIndex="11" IsHitTestVisible="False"
+                         Template="{StaticResource KeyboardSelectionTemplate}"/>
             </Grid>
         </DataTemplate>
 

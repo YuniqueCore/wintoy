@@ -28,20 +28,21 @@ public class GroupSynchronizationCoordinatorTests
     }
 
     [Fact]
-    public void CalculateAlignedLayout_shifts_the_whole_row_inside_work_area_without_changing_spacing()
+    public void CalculateAlignedLayout_preserves_anchor_left_and_allows_earlier_windows_offscreen()
     {
         var windows = new[]
         {
             new GroupSynchronizationCoordinator.WindowBounds(0, 100, 300, 700),
             new GroupSynchronizationCoordinator.WindowBounds(0, 100, 300, 700),
-            new GroupSynchronizationCoordinator.WindowBounds(1500, 500, 300, 700)
+            new GroupSynchronizationCoordinator.WindowBounds(0, 500, 300, 700)
         };
 
         var result = GroupSynchronizationCoordinator.CalculateAlignedLayout(
             windows, anchorIndex: 2, spacing: 4, new Rect(0, 0, 1600, 800));
 
-        result[0].Left.Should().BeGreaterThanOrEqualTo(0);
-        (result[^1].Left + windows[^1].Width).Should().BeLessThanOrEqualTo(1600);
+        result[0].Left.Should().Be(-608);
+        result[1].Left.Should().Be(-304);
+        result[2].Left.Should().Be(0, "用户拖动的第 3 个窗口是锚点，其最终横坐标不能被整组钳制改写");
         result.Select(item => item.Top).Should().OnlyContain(top => top == 100,
             "最高窗口为 700 时，Top 必须钳制到 800-700");
         AssertNoOverlap(result, windows, spacing: 4);

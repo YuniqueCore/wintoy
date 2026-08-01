@@ -43,6 +43,15 @@ public class DepthMarketDataTests
     }
 
     [Fact]
+    public void ToPriceLadder_supports_twenty_visible_levels_per_side()
+    {
+        var ladder = BuildSnapshot().ToPriceLadder(priceTick: 1m, levels: 20);
+
+        ladder.Rows.Should().HaveCount(41);
+        ladder.CenterIndex.Should().Be(20);
+    }
+
+    [Fact]
     public void ToPriceLadder_center_row_marks_is_last_price_unique()
     {
         var data = BuildSnapshot(last: 100m, tick: 1m);
@@ -115,7 +124,7 @@ public class DepthMarketDataTests
     }
 
     [Fact]
-    public void ToPriceLadder_marks_only_actual_quote_rows_with_a_colored_display_zone()
+    public void ToPriceLadder_extends_quote_zones_outward_from_best_prices()
     {
         var data = BuildSnapshot(
             bidPrices: new[] { 99m },
@@ -125,9 +134,12 @@ public class DepthMarketDataTests
 
         var ladder = data.ToPriceLadder(priceTick: 1m, levels: 3);
 
-        ladder.Rows.Single(row => row.Price == 101m).DisplayZone.Should().Be(PriceDisplayZone.AskQuote);
-        ladder.Rows.Single(row => row.Price == 99m).DisplayZone.Should().Be(PriceDisplayZone.BidQuote);
-        ladder.Rows.Where(row => row.Price is 102m or 103m or 98m or 97m or 100m)
-            .Should().OnlyContain(row => row.DisplayZone == PriceDisplayZone.Unquoted);
+        ladder.Rows.Where(row => row.Price >= 101m)
+            .Should().OnlyContain(row => row.DisplayZone == PriceDisplayZone.AskQuote);
+        ladder.Rows.Where(row => row.Price <= 99m)
+            .Should().OnlyContain(row => row.DisplayZone == PriceDisplayZone.BidQuote);
+        ladder.Rows.Single(row => row.Price == 100m).DisplayZone.Should().Be(PriceDisplayZone.Unquoted);
+        ladder.Rows.Single(row => row.Price == 103m).AskVolume.Should().Be(0,
+            "扩展显示区不能伪造 CTP 五档之外的委托量");
     }
 }

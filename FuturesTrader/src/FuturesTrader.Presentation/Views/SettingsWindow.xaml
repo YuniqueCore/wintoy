@@ -15,6 +15,7 @@
         WindowBackdropType="Mica"
         WindowCornerPreference="Round"
         AutomationProperties.AutomationId="SettingsWindow"
+        PreviewKeyDown="OnPreviewKeyDown"
         Foreground="{DynamicResource TextFillColorPrimaryBrush}"
         Background="{DynamicResource ApplicationBackgroundBrush}">
     <ui:FluentWindow.Resources>
@@ -122,6 +123,12 @@
                         <StackPanel Orientation="Horizontal">
                             <ui:SymbolIcon Symbol="ColorBackground24" FontSize="18" Margin="0,0,12,0"/>
                             <TextBlock Text="外观" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
+                        </StackPanel>
+                    </ListBoxItem>
+                    <ListBoxItem Padding="12,10" AutomationProperties.AutomationId="ShortcutSettingsNavigation">
+                        <StackPanel Orientation="Horizontal">
+                            <ui:SymbolIcon Symbol="Keyboard24" FontSize="18" Margin="0,0,12,0"/>
+                            <TextBlock Text="快捷键" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                         </StackPanel>
                     </ListBoxItem>
                 </ListBox>
@@ -721,6 +728,86 @@
                                                        Style="{StaticResource HintStyle}" Margin="0,12,0,0"/>
                                         </StackPanel>
                                     </ui:Card>
+                                </StackPanel>
+                            </DataTemplate>
+
+                            <!-- 快捷键段：录制、冲突提示、单项及全部恢复默认。 -->
+                            <DataTemplate DataType="{x:Type vm:ShortcutConfigViewModel}">
+                                <StackPanel>
+                                    <ui:CardControl Margin="0,0,0,8">
+                                        <ui:CardControl.Header>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock Text="快捷键 · 合约窗口键盘操作" Style="{StaticResource SectionTitleStyle}"/>
+                                                    <TextBlock Text="录制后点击顶部“保存配置”才会持久化并应用到全部窗口。"
+                                                               Style="{StaticResource HintStyle}" Margin="0,4,16,0"/>
+                                                </StackPanel>
+                                                <ui:Button Grid.Column="1" Content="恢复全部默认"
+                                                           Icon="{ui:SymbolIcon ArrowReset24}"
+                                                           Command="{Binding ResetAllCommand}"
+                                                           Padding="12,7" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </ui:CardControl.Header>
+                                    </ui:CardControl>
+
+                                    <Border Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                                            BorderBrush="{DynamicResource ControlElevationBorderBrush}"
+                                            BorderThickness="1" CornerRadius="6" Padding="10,7" Margin="0,0,0,8">
+                                        <TextBlock Text="{Binding ValidationMessage, TargetNullValue=''}"
+                                                   AutomationProperties.AutomationId="ShortcutValidationMessage"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   TextWrapping="Wrap"/>
+                                    </Border>
+
+                                    <ItemsControl ItemsSource="{Binding Bindings}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:ShortcutBindingViewModel}">
+                                                <ui:Card Style="{StaticResource SectionCardStyle}" Padding="12">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="110"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                            <TextBlock Text="{Binding ActionName}" FontWeight="SemiBold" FontSize="13"/>
+                                                            <TextBlock Text="{Binding Description}" Style="{StaticResource HintStyle}" Margin="0,3,0,0"/>
+                                                        </StackPanel>
+                                                        <Border Grid.Column="1" Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                                                BorderThickness="1" CornerRadius="4" Padding="8,5" Margin="0,0,8,0"
+                                                                VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding GestureText}" FontFamily="Consolas" FontWeight="SemiBold"
+                                                                       HorizontalAlignment="Center"/>
+                                                        </Border>
+                                                        <ui:Button Grid.Column="2" Margin="0,0,6,0" Padding="10,6"
+                                                                   Command="{Binding DataContext.BeginRecordingCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                   CommandParameter="{Binding}">
+                                                            <ui:Button.Style>
+                                                                <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                                                                    <Setter Property="Content" Value="录制"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsRecording}" Value="True">
+                                                                            <Setter Property="Content" Value="等待按键…"/>
+                                                                            <Setter Property="Appearance" Value="Primary"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ui:Button.Style>
+                                                        </ui:Button>
+                                                        <ui:Button Grid.Column="3" Content="重置" Padding="10,6"
+                                                                   Command="{Binding DataContext.ResetOneCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                   CommandParameter="{Binding}"/>
+                                                    </Grid>
+                                                </ui:Card>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
                             </DataTemplate>
                         </ContentControl.Resources>

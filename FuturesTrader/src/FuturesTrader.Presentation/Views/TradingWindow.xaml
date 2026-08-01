@@ -9,7 +9,7 @@
                  AutomationProperties.AutomationId="TradingWindow"
                  mc:Ignorable="d"
                  d:DataContext="{d:DesignInstance Type=vm:TradingViewModel}"
-                 Title="合约"
+                 Title="{Binding InstrumentDisplayName}"
                  Width="360" Height="780"
                  MinWidth="320" MinHeight="540"
                  Background="{DynamicResource ApplicationBackgroundBrush}"
@@ -30,6 +30,28 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+        <Style TargetType="ui:NumberBox" BasedOn="{StaticResource {x:Type ui:NumberBox}}">
+            <Setter Property="MinWidth" Value="80"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+            <Setter Property="ClearButtonEnabled" Value="False"/>
+            <Setter Property="SpinButtonPlacementMode" Value="Compact"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style TargetType="ui:TextBox" BasedOn="{StaticResource {x:Type ui:TextBox}}">
+            <Setter Property="MinWidth" Value="80"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorDefaultBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}"/>
+            <Setter Property="ClearButtonEnabled" Value="False"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
     </ui:FluentWindow.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -37,15 +59,20 @@
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- 标题栏：合约名 + 连接状态 + 时间 -->
-        <ui:TitleBar Grid.Row="0" Title="{Binding InstrumentDisplayName}">
+        <!-- 内部标题栏优先完整表达合约身份；系统窗口 Title 使用同一个绑定。 -->
+        <ui:TitleBar Grid.Row="0"
+                     AutomationProperties.AutomationId="ContractTitleBar"
+                     AutomationProperties.Name="{Binding InstrumentDisplayName}">
             <ui:TitleBar.Header>
-                <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
-                    <TextBlock Text="{Binding ConnectionState}" FontSize="11"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <TextBlock Text="{Binding UpdateTime}" FontSize="11"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center"/>
-                </StackPanel>
+                <TextBlock Text="{Binding InstrumentDisplayName}"
+                           AutomationProperties.AutomationId="ContractTitleText"
+                           AutomationProperties.Name="{Binding InstrumentDisplayName}"
+                           FontSize="12" FontWeight="SemiBold" LineHeight="16"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding InstrumentDisplayName}"
+                           MaxWidth="220" MaxHeight="34" Margin="0,0,8,0"
+                           VerticalAlignment="Center"/>
             </ui:TitleBar.Header>
         </ui:TitleBar>
 
@@ -138,6 +165,29 @@
                                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"/>
                             </Grid>
                         </StackPanel>
+                    </ui:Card>
+
+                    <!-- 价格梯密度：窗口级 RowHeight，关闭窗口时回写 Users.xml。 -->
+                    <ui:Card Margin="0,0,0,4" Padding="6,4">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="82"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,6,0">
+                                <TextBlock Text="价格梯格高" FontSize="11" FontWeight="SemiBold"/>
+                                <TextBlock Text="每侧 20 格" FontSize="9"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
+                            </StackPanel>
+                            <ui:NumberBox Grid.Column="1"
+                                          AutomationProperties.AutomationId="PriceRowHeightStep"
+                                          Value="{Binding RowHeight, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          Minimum="10" Maximum="32" SmallChange="1"
+                                          SpinButtonPlacementMode="Compact"
+                                          ClearButtonEnabled="False"
+                                          FontSize="11"
+                                          ToolTip="调整每个价格格子的高度（10–32 像素）"/>
+                        </Grid>
                     </ui:Card>
 
                     <!-- 3. 挂单模式 A/B -->
@@ -296,8 +346,20 @@
                         Padding="5,2">
                     <Grid>
                         <TextBlock Text="左/右键点交易列 1/2 下单"
+                                   AutomationProperties.AutomationId="PriceInteractionHint"
                                    FontSize="9" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"/>
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Order.StatusMessage}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
                         <TextBlock x:Name="PriceInteractionStatus"
                                    Text="{Binding Order.StatusMessage}"
                                    FontSize="9" VerticalAlignment="Center"

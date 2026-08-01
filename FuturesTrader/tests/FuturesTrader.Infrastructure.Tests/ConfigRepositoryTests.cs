@@ -52,6 +52,7 @@ public class ConfigRepositoryTests : IDisposable
         config.User.MOrderTimes.Should().HaveCount(9);
         config.User.MOrderTimes[0].Should().Be(new TimeOnly(9, 29, 58));
         config.User.MOrderTimes[8].Should().Be(new TimeOnly(10, 31, 0));
+        config.Shortcuts.Should().Be(new ShortcutConfig(), "旧配置缺失快捷键段时使用默认值");
     }
 
     // ── 边缘条件 ─────────────────────────────────────────────
@@ -141,6 +142,16 @@ public class ConfigRepositoryTests : IDisposable
                     new TimeOnly(13, 0, 0), new TimeOnly(14, 0, 0), new TimeOnly(15, 0, 0),
                     new TimeOnly(21, 0, 0), new TimeOnly(22, 0, 0), new TimeOnly(23, 0, 0)
                 ]
+            },
+            Shortcuts = new ShortcutConfig
+            {
+                SelectiveCancelAll = "Ctrl+Space",
+                ForceCancelAll = "Ctrl+Shift+W",
+                RecenterAsk = "PageUp",
+                RecenterBid = "PageDown",
+                ToggleOnlyOpen = "Ctrl+F",
+                MoveSelectionUp = "Ctrl+Up",
+                MoveSelectionDown = "Ctrl+Down"
             }
         };
 
@@ -160,6 +171,7 @@ public class ConfigRepositoryTests : IDisposable
         loaded.User.HqAddress.Should().Be(original.User.HqAddress);
         loaded.User.MOrderXSpeed.Should().Be(original.User.MOrderXSpeed);
         loaded.User.MOrderTimes.Should().Equal(original.User.MOrderTimes);
+        loaded.Shortcuts.Should().Be(original.Shortcuts);
     }
 
     // ── JSON 迁移 ────────────────────────────────────────────
@@ -171,7 +183,8 @@ public class ConfigRepositoryTests : IDisposable
         {
             Window = new WindowConfig { MainFont = "楷体", MouseWheelSpeed = 5 },
             Order = new OrderConfig { RiskOpen = true, MaxCancelGz = 999 },
-            User = new UserConfig { MOrderXSpeed = 500 }
+            User = new UserConfig { MOrderXSpeed = 500 },
+            Shortcuts = new ShortcutConfig { ForceCancelAll = "Ctrl+W" }
         };
 
         var json = _repo.ToJson(original);
@@ -182,6 +195,7 @@ public class ConfigRepositoryTests : IDisposable
         restored.Order.RiskOpen.Should().BeTrue();
         restored.Order.MaxCancelGz.Should().Be(999);
         restored.User.MOrderXSpeed.Should().Be(500);
+        restored.Shortcuts.ForceCancelAll.Should().Be("Ctrl+W");
     }
 
     [Fact]

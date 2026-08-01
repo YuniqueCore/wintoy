@@ -144,6 +144,10 @@ public class SimulatedMarketDataServiceTests
         snapshot.AskPrices.Should().BeInAscendingOrder();
         snapshot.BidVolumes.Should().OnlyContain(volume => volume > 0);
         snapshot.AskVolumes.Should().OnlyContain(volume => volume > 0);
+        var priceTick = snapshot.BidPrices[0] - snapshot.BidPrices[1];
+        var unquotedRowCount = (int)((snapshot.AskPrices[0] - snapshot.BidPrices[0]) / priceTick) - 1;
+        unquotedRowCount.Should().BeInRange(3, 7,
+            "Mock 盘口应稳定呈现多行白格，而不是固定 last±1 tick 只产生一行");
     }
 
     [Fact]

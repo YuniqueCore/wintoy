@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 using FuturesTrader.Presentation.ViewModels;
 using Wpf.Ui.Controls;
 
@@ -19,5 +20,13 @@ public partial class SettingsWindow : FluentWindow
         InitializeComponent();
         ViewModel = viewModel;
         DataContext = viewModel;
+    }
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (ViewModel.Shortcuts.RecordingBinding is null) return;
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        _ = ViewModel.Shortcuts.TryAssign(key, Keyboard.Modifiers);
+        e.Handled = true;
     }
 }

@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Reactive.Disposables;
 using System.Reactive.Linq;
 using System.Windows;
-using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
@@ -18,7 +17,7 @@ namespace FuturesTrader.Presentation.ViewModels;
 /// <summary>
 /// 合约交易窗口 ViewModel（TYYWin 复刻）：每合约一个实例，由 WindowManager 用 ActivatorUtilities 创建。
 /// 构造时订阅本合约行情流 → Dispatcher 刷新 <see cref="PriceLadder"/>（价差居中）+ 摘要字段。
-/// <see cref="InstrumentCode"/> 为合约代码；<see cref="PriceLadderLevels"/> 控制上下档位数（默认 5）。
+/// <see cref="InstrumentCode"/> 为合约代码；<see cref="PriceLadderLevels"/> 控制每侧可视价位数（默认 20）。
 /// 行情推送在 CTP/Mock 工作线程触发，回调内通过 <see cref="MarshalToUi"/> 切回 UI 线程刷新。
 /// <para>
 /// <see cref="Order"/> 为下单区 VM（买卖/开平/价格/数量 + 报单/撤单），行情到达时同步 PriceTick 给它做价格校验。
@@ -27,7 +26,6 @@ namespace FuturesTrader.Presentation.ViewModels;
 public sealed partial class TradingViewModel : ObservableObject, IDisposable
 {
     private readonly IMarketDataService _marketData;
-    private readonly IKeyboardOperationService _keyboard;
     private readonly ISoundService _sound;
     private readonly ITradingService _trading;
     private readonly MarketDataOptions _options;
@@ -76,13 +74,12 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         _config = config;
         InstrumentCode = config.InstrumentCode;
         _marketData = marketData;
-        _keyboard = keyboard;
         _sound = sound;
         _trading = trading;
         _options = options.Value;
         _legacyTradingRuntime = legacyTradingRuntime ?? new LegacyTradingRuntime();
         _logger = logger;
-        PriceLadderLevels = _options.PriceLadderLevels;
+        PriceLadderLevels = Math.Clamp(_options.PriceLadderLevels, 10, 100);
 
         // 从 InstrumentWindow 33 字段初始化合约窗口配置（双向绑定，关闭时回写）
         HydrateFromConfig(config);
@@ -99,8 +96,8 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     /// <summary>合约代码（如 ag2608）。</summary>
     public string InstrumentCode { get; }
 
-    /// <summary>窗口标题显示名：合约码 + 期权持续时间 + 组号。
-    /// 期货格式 "ag2608 · 组 3"；期权格式 "ps2609-C-36500 [10天 0807] · 组 3"。
+    /// <summary>窗口标题显示名：合约名称 - 合约代码 + 期权持续时间。
+    /// 期货格式 "白银2608 - ag2608"；期权格式 "豆粕期权 - m2609-C-3200 [10天 0807]"。
     /// 合约元数据到达后（OnInstrumentUpdate）刷新。</summary>
     public string InstrumentDisplayName => BuildDisplayName();
 
@@ -283,7 +280,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     {
         ValLeft = c.ValLeft;
         ValRight = c.ValRight;
-        RowHeight = c.RowHeight;
+        RowHeight = Math.Clamp(c.RowHeight, 10, 32);
         SetOrderPlacementModeFromLegacyRadio(c.RboA, c.RboB);
         CbNearby = c.CbNearby;
         CbOnlyOpen = c.CbOnlyOpen;
@@ -306,7 +303,7 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         {
             ValLeft = ValLeft,
             ValRight = ValRight,
-            RowHeight = RowHeight,
+            RowHeight = Math.Clamp(RowHeight, 10, 32),
             RboA = RboA,
             RboB = RboB,
             CbNearby = CbNearby,
@@ -536,16 +533,19 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
         });
     }
 
-    /// <summary>构造窗口标题显示名：合约码 + 期权后缀 + 组号。</summary>
+    /// <summary>构造窗口标题显示名：合约名称 - 合约代码 + 期权后缀。</summary>
     private string BuildDisplayName()
+        => FormatInstrumentDisplayName(InstrumentCode, _instrument, DateTime.Today);
+
+    internal static string FormatInstrumentDisplayName(string instrumentCode, Instrument? instrument, DateTime today)
     {
-        var suffix = _instrument is { IsOptions: true } opt
-            ? FormatOptionsSuffix(opt.ExpireDate, DateTime.Today)
+        var suffix = instrument is { IsOptions: true } opt
+            ? FormatOptionsSuffix(opt.ExpireDate, today)
             : string.Empty;
-        var group = _config.GroupId > 0 ? $" · 组 {_config.GroupId}" : string.Empty;
-        return string.IsNullOrEmpty(suffix)
-            ? $"{InstrumentCode}{group}"
-            : $"{InstrumentCode} {suffix}{group}";
+        var name = string.IsNullOrWhiteSpace(instrument?.Name)
+            ? instrumentCode
+            : $"{instrument.Name.Trim()} - {instrumentCode}";
+        return string.IsNullOrEmpty(suffix) ? name : $"{name} {suffix}";
     }
 
     /// <summary>期权持续时间后缀：[剩余天数天 到期MMDD]。today 参数化便于单元测试。</summary>
@@ -642,19 +642,6 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
             dict[alignedPrice] = dict.GetValueOrDefault(alignedPrice) + Math.Max(0, info.RemainingVolume);
         }
         return dict;
-    }
-
-    /// <summary>注册 Up/Down 导航快捷键到 PriceList（M3 扩展时加买卖热键）。</summary>
-    public void RegisterKeyboardShortcuts(int maxRowIndex)
-    {
-        _keyboard.Register(
-            new KeyGesture(Key.Up),
-            () => _keyboard.MoveSelection(-1, maxRowIndex),
-            "上移选中价位");
-        _keyboard.Register(
-            new KeyGesture(Key.Down),
-            () => _keyboard.MoveSelection(1, maxRowIndex),
-            "下移选中价位");
     }
 
     /// <summary>窗口关闭时退订（释放订阅 + 下单 VM，避免泄漏）。</summary>

@@ -40,8 +40,11 @@ public sealed class MarketDataOptions
     /// <summary>CTP 行情流文件目录（CTP 要求可写，存订阅状态等）。PostConfigure 会将相对路径绝对化。</summary>
     public string FlowPath { get; set; } = "./MdFlow/";
 
-    /// <summary>价差居中价格梯上下档位数（默认 5，对齐 CTP 5 档买卖盘）。</summary>
-    public int PriceLadderLevels { get; init; } = 5;
+    /// <summary>
+    /// 价差居中价格梯每侧可视价位数。CTP 的实际委托量仍只有五档，
+    /// 但交易价格梯需要在买一/卖一边界外保留足够的可点击价位。
+    /// </summary>
+    public int PriceLadderLevels { get; init; } = 20;
 
     /// <summary>Mock 模式下 tick 推送间隔（毫秒，默认 500）。</summary>
     public int MockTickIntervalMs { get; init; } = 500;

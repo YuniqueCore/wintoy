@@ -170,6 +170,7 @@ public sealed class SimulatedMarketDataService : IMarketDataService
         private long _volume;
         private decimal _turnover;
         private long _openInterest;
+        private readonly int _unquotedRowCount;
 
         internal QuoteState(MockInstrumentProfile profile, int seed)
         {
@@ -181,6 +182,7 @@ public sealed class SimulatedMarketDataService : IMarketDataService
             _volume = profile.InitialVolume;
             _turnover = profile.InitialPrice * profile.InitialVolume * profile.Instrument.VolumeMultiple;
             _openInterest = profile.InitialOpenInterest;
+            _unquotedRowCount = 3 + Math.Abs(seed % 5);
         }
 
         internal MockInstrumentProfile Profile { get; }
@@ -216,10 +218,12 @@ public sealed class SimulatedMarketDataService : IMarketDataService
             var bidVolumes = new int[5];
             var askPrices = new decimal[5];
             var askVolumes = new int[5];
+            var bidDistanceTicks = (_unquotedRowCount + 1) / 2;
+            var askDistanceTicks = _unquotedRowCount + 1 - bidDistanceTicks;
             for (var index = 0; index < 5; index++)
             {
-                bidPrices[index] = _lastPrice - (index + 1) * tick;
-                askPrices[index] = _lastPrice + (index + 1) * tick;
+                bidPrices[index] = _lastPrice - (bidDistanceTicks + index) * tick;
+                askPrices[index] = _lastPrice + (askDistanceTicks + index) * tick;
                 var depthFloor = Math.Max(2, Profile.TypicalDepthVolume - index * Profile.TypicalDepthVolume / 8);
                 var jitter = Math.Max(2, Profile.TypicalDepthVolume / 4);
                 bidVolumes[index] = Math.Max(1, depthFloor + _random.Next(-jitter, jitter + 1));

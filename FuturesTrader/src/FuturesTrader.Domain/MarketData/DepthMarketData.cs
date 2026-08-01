@@ -53,22 +53,25 @@ public sealed record DepthMarketData
         if (levels <= 0) levels = 5;
         pendingByPrice ??= new Dictionary<decimal, int>();
 
+        var bestAsk = FindBestQuotedPrice(AskPrices, AskVolumes, findMinimum: true);
+        var bestBid = FindBestQuotedPrice(BidPrices, BidVolumes, findMinimum: false);
         var rows = new List<PriceLevel>(levels * 2 + 1);
-        // 上方价格行：有卖方报价时以红色显示；没有报价时是中性的无人报价行。
+        // 卖一边界及更高价位属于卖方显示区；CTP 没有深度量的价位仍然可点击下单。
         for (int i = levels; i >= 1; i--)
         {
             var price = LastPrice + i * priceTick;
             var askVolume = VolumeAt(price, AskPrices, AskVolumes, priceTick);
+            var bidVolume = VolumeAt(price, BidPrices, BidVolumes, priceTick);
             rows.Add(new PriceLevel
             {
                 Price = price,
                 AskVolume = askVolume,
-                BidVolume = 0,
+                BidVolume = bidVolume,
                 PendingOrderCount = LookupPending(pendingByPrice, price, priceTick),
-                DisplayZone = askVolume > 0 ? PriceDisplayZone.AskQuote : PriceDisplayZone.Unquoted
+                DisplayZone = ResolveDisplayZone(price, bestAsk, bestBid, askVolume, bidVolume)
             });
         }
-        // 最新价行可能同时有报价，也可能位于无人报价中间区；最新价标记与颜色分开。
+        // 最新价可能在买卖价差中；最新价标记与报价显示区分开。
         var centerAskVolume = VolumeAt(LastPrice, AskPrices, AskVolumes, priceTick);
         var centerBidVolume = VolumeAt(LastPrice, BidPrices, BidVolumes, priceTick);
         rows.Add(new PriceLevel
@@ -78,27 +81,53 @@ public sealed record DepthMarketData
             AskVolume = centerAskVolume,
             BidVolume = centerBidVolume,
             PendingOrderCount = LookupPending(pendingByPrice, LastPrice, priceTick),
-            DisplayZone = centerAskVolume > 0
-                ? PriceDisplayZone.AskQuote
-                : centerBidVolume > 0
-                    ? PriceDisplayZone.BidQuote
-                    : PriceDisplayZone.Unquoted
+            DisplayZone = ResolveDisplayZone(LastPrice, bestAsk, bestBid, centerAskVolume, centerBidVolume)
         });
-        // 下方价格行：有买方报价时以蓝色显示；没有报价时是中性的无人报价行。
+        // 买一边界及更低价位属于买方显示区；只有买一与卖一之间保留白格。
         for (int i = 1; i <= levels; i++)
         {
             var price = LastPrice - i * priceTick;
             var bidVolume = VolumeAt(price, BidPrices, BidVolumes, priceTick);
+            var askVolume = VolumeAt(price, AskPrices, AskVolumes, priceTick);
             rows.Add(new PriceLevel
             {
                 Price = price,
                 BidVolume = bidVolume,
-                AskVolume = 0,
+                AskVolume = askVolume,
                 PendingOrderCount = LookupPending(pendingByPrice, price, priceTick),
-                DisplayZone = bidVolume > 0 ? PriceDisplayZone.BidQuote : PriceDisplayZone.Unquoted
+                DisplayZone = ResolveDisplayZone(price, bestAsk, bestBid, askVolume, bidVolume)
             });
         }
         return new PriceLadder(levels, LastPrice, priceTick, rows);
+    }
+
+    private static decimal? FindBestQuotedPrice(
+        IReadOnlyList<decimal> prices,
+        IReadOnlyList<int> volumes,
+        bool findMinimum)
+    {
+        decimal? best = null;
+        for (var index = 0; index < prices.Count && index < volumes.Count; index++)
+        {
+            var price = prices[index];
+            if (price <= 0 || volumes[index] <= 0) continue;
+            if (best is null || (findMinimum ? price < best : price > best)) best = price;
+        }
+        return best;
+    }
+
+    private static PriceDisplayZone ResolveDisplayZone(
+        decimal price,
+        decimal? bestAsk,
+        decimal? bestBid,
+        int askVolume,
+        int bidVolume)
+    {
+        if (askVolume > 0) return PriceDisplayZone.AskQuote;
+        if (bidVolume > 0) return PriceDisplayZone.BidQuote;
+        if (bestAsk is not null && price >= bestAsk.Value) return PriceDisplayZone.AskQuote;
+        if (bestBid is not null && price <= bestBid.Value) return PriceDisplayZone.BidQuote;
+        return PriceDisplayZone.Unquoted;
     }
 
     /// <summary>在 5 档报价中查找指定价位的挂单量（价位四舍五入到 tick）。</summary>

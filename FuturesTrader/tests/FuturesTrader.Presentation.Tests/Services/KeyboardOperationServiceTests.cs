@@ -1,4 +1,6 @@
 using FluentAssertions;
+using FuturesTrader.Domain.Configuration;
+using FuturesTrader.Presentation.Abstractions;
 using FuturesTrader.Presentation.Services;
 
 namespace FuturesTrader.Presentation.Tests.Services;
@@ -9,6 +11,63 @@ namespace FuturesTrader.Presentation.Tests.Services;
 /// </summary>
 public class KeyboardOperationServiceTests
 {
+    [Fact]
+    public void Defaults_match_legacy_evidence_and_navigation_keys()
+    {
+        var config = new KeyboardOperationService().CurrentConfiguration;
+
+        config.SelectiveCancelAll.Should().Be("Space");
+        config.ForceCancelAll.Should().Be("W");
+        config.RecenterAsk.Should().Be("A");
+        config.RecenterBid.Should().Be("D");
+        config.ToggleOnlyOpen.Should().Be("F");
+        config.MoveSelectionUp.Should().Be("Up");
+        config.MoveSelectionDown.Should().Be("Down");
+    }
+
+    [Fact]
+    public void TryApplyConfiguration_atomically_accepts_valid_custom_bindings()
+    {
+        var service = new KeyboardOperationService();
+        var custom = new ShortcutConfig
+        {
+            SelectiveCancelAll = "Ctrl+Space",
+            ForceCancelAll = "Ctrl+W",
+            RecenterAsk = "Ctrl+A",
+            RecenterBid = "Ctrl+D",
+            ToggleOnlyOpen = "Ctrl+F",
+            MoveSelectionUp = "Ctrl+Up",
+            MoveSelectionDown = "Ctrl+Down"
+        };
+
+        service.TryApplyConfiguration(custom, out var error).Should().BeTrue(error);
+        service.CurrentConfiguration.Should().Be(custom);
+    }
+
+    [Fact]
+    public void TryApplyConfiguration_rejects_conflicts_and_preserves_previous_configuration()
+    {
+        var service = new KeyboardOperationService();
+        var previous = service.CurrentConfiguration;
+        var conflict = new ShortcutConfig { ForceCancelAll = "Space" };
+
+        service.TryApplyConfiguration(conflict, out var error).Should().BeFalse();
+
+        error.Should().Contain("选择性全撤");
+        service.CurrentConfiguration.Should().Be(previous);
+    }
+
+    [Fact]
+    public void TryApplyConfiguration_rejects_invalid_gesture()
+    {
+        var service = new KeyboardOperationService();
+        var invalid = new ShortcutConfig { RecenterAsk = "not-a-real-key" };
+
+        service.TryApplyConfiguration(invalid, out var error).Should().BeFalse();
+
+        error.Should().Contain("定位卖一");
+    }
+
     [Fact]
     public void Register_and_unregister_track_bindings_count()
     {

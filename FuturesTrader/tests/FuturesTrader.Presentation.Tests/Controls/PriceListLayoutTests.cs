@@ -19,11 +19,12 @@ public class PriceListLayoutTests
     [Fact]
     public void SelectVisibleRows_hides_all_unquoted_rows_when_white_grid_is_off()
     {
-        var rows = PriceListLayout.SelectVisibleRows(BuildLadder(), showWhiteGrid: false);
+        var ladder = BuildLadder();
+        var rows = PriceListLayout.SelectVisibleRows(ladder, showWhiteGrid: false);
 
-        rows.Should().HaveCount(2);
-        rows.Should().ContainSingle(row => row.DisplayZone == PriceDisplayZone.AskQuote);
-        rows.Should().ContainSingle(row => row.DisplayZone == PriceDisplayZone.BidQuote);
+        rows.Should().HaveCount(ladder.Rows.Count(row => row.DisplayZone != PriceDisplayZone.Unquoted));
+        rows.Should().Contain(row => row.DisplayZone == PriceDisplayZone.AskQuote);
+        rows.Should().Contain(row => row.DisplayZone == PriceDisplayZone.BidQuote);
         rows.Should().NotContain(row => row.DisplayZone == PriceDisplayZone.Unquoted);
     }
 
@@ -62,13 +63,19 @@ public class PriceListLayoutTests
         rows.Apply(initial);
         var references = rows.Items.ToArray();
         var changed = initial.ToArray();
-        changed[1] = changed[1] with { DisplayZone = PriceDisplayZone.AskQuote, AskVolume = 9 };
+        var centerIndex = Array.FindIndex(changed,
+            row => row.DisplayZone == PriceDisplayZone.Unquoted);
+        changed[centerIndex] = changed[centerIndex] with
+        {
+            DisplayZone = PriceDisplayZone.AskQuote,
+            AskVolume = 9
+        };
 
         rows.Apply(changed).Should().BeTrue();
 
-        rows.Items[1].Should().NotBeSameAs(references[1]);
-        rows.Items.Where((_, index) => index != 1)
-            .Should().Equal(references.Where((_, index) => index != 1));
+        rows.Items[centerIndex].Should().NotBeSameAs(references[centerIndex]);
+        rows.Items.Where((_, index) => index != centerIndex)
+            .Should().Equal(references.Where((_, index) => index != centerIndex));
     }
 
     private static PriceLadder BuildLadder() => new DepthMarketData

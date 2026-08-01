@@ -180,8 +180,8 @@ public sealed class GroupSynchronizationCoordinator
     }
 
     /// <summary>
-    /// 以锚点窗口当前 Left/Top 计算整组最终位置。锚点两侧按顺序紧贴；整行能放入工作区时整体钳制，
-    /// 既不破坏相邻窗口间距，也不会为了对齐而制造重叠。
+    /// 以锚点窗口当前 Left/Top 计算整组最终位置。锚点两侧按顺序紧贴，横向允许部分窗口移出工作区；
+    /// 纵向仍保持在工作区内，且不会为了对齐而制造重叠。
     /// </summary>
     internal static IReadOnlyList<WindowPlacement> CalculateAlignedLayout(
         IReadOnlyList<WindowBounds> windows,
@@ -203,24 +203,6 @@ public sealed class GroupSynchronizationCoordinator
             lefts[index] = lefts[index + 1] - spacing - widths[index];
         for (var index = anchorIndex + 1; index < windows.Count; index++)
             lefts[index] = lefts[index - 1] + widths[index - 1] + spacing;
-
-        if (!workArea.IsEmpty && workArea.Width > 0)
-        {
-            var rowWidth = widths.Sum() + spacing * Math.Max(0, windows.Count - 1);
-            var rowRight = lefts[^1] + widths[^1];
-            var shift = rowWidth > workArea.Width
-                ? workArea.Left - lefts[0]
-                : lefts[0] < workArea.Left
-                    ? workArea.Left - lefts[0]
-                    : rowRight > workArea.Right
-                        ? workArea.Right - rowRight
-                        : 0;
-            if (Math.Abs(shift) >= 0.5)
-            {
-                for (var index = 0; index < lefts.Length; index++)
-                    lefts[index] += shift;
-            }
-        }
 
         var maxHeight = windows.Max(window => Math.Max(1, window.Height));
         var targetTop = windows[anchorIndex].Top;

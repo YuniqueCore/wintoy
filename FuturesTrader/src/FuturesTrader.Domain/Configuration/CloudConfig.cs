@@ -10,4 +10,5 @@ public sealed record CloudConfig
     public WindowConfig Window { get; init; } = new();
     public OrderConfig Order { get; init; } = new();
     public UserConfig User { get; init; } = new();
+    public ShortcutConfig Shortcuts { get; init; } = new();
 }

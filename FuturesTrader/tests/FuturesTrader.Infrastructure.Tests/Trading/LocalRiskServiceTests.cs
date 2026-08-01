@@ -30,7 +30,7 @@ public class LocalRiskServiceTests
         var cfg = new OrderConfig { RiskOpen = false, MaxInputCount = 1 };
         var svc = new LocalRiskService(cfg, NullLogger<LocalRiskService>.Instance);
 
-        var (allowed, _) = svc.CheckOrder(Buy("ag2608"), currentOrderCount: 99, currentPositionCount: 99);
+        var (allowed, _) = svc.CheckOrder(Buy("ag2608"), activeOrderCount: 99, currentPositionCount: 99);
 
         allowed.Should().BeTrue("RiskOpen=false 时所有报单放行");
     }
@@ -54,7 +54,7 @@ public class LocalRiskServiceTests
         var cfg = new OrderConfig { RiskOpen = true, MaxInputCount = 3 };
         var svc = new LocalRiskService(cfg, NullLogger<LocalRiskService>.Instance);
 
-        var (allowed, reason) = svc.CheckOrder(Buy("ag2608"), currentOrderCount: 3, currentPositionCount: 0);
+        var (allowed, reason) = svc.CheckOrder(Buy("ag2608"), activeOrderCount: 3, currentPositionCount: 0);
 
         allowed.Should().BeFalse("达到 MaxInputCount 应拒绝");
         reason.Should().Contain("3");
@@ -66,7 +66,7 @@ public class LocalRiskServiceTests
         var cfg = new OrderConfig { RiskOpen = true, MaxInputCount = 3 };
         var svc = new LocalRiskService(cfg, NullLogger<LocalRiskService>.Instance);
 
-        var (allowed, _) = svc.CheckOrder(Buy("ag2608"), currentOrderCount: 2, currentPositionCount: 0);
+        var (allowed, _) = svc.CheckOrder(Buy("ag2608"), activeOrderCount: 2, currentPositionCount: 0);
 
         allowed.Should().BeTrue("未达 MaxInputCount 应放行");
     }
@@ -77,7 +77,7 @@ public class LocalRiskServiceTests
         var cfg = new OrderConfig { RiskOpen = true, MaxInputCount = 0 };
         var svc = new LocalRiskService(cfg, NullLogger<LocalRiskService>.Instance);
 
-        var (allowed, _) = svc.CheckOrder(Buy("ag2608"), currentOrderCount: 99999, currentPositionCount: 0);
+        var (allowed, _) = svc.CheckOrder(Buy("ag2608"), activeOrderCount: 99999, currentPositionCount: 0);
 
         allowed.Should().BeTrue("MaxInputCount=0 表示不限制");
     }
@@ -91,7 +91,7 @@ public class LocalRiskServiceTests
         var svc = new LocalRiskService(cfg, NullLogger<LocalRiskService>.Instance);
 
         var (allowed, reason) = svc.CheckOrder(
-            Buy("ag2608", OffsetFlag.Open), currentOrderCount: 0, currentPositionCount: 2);
+            Buy("ag2608", OffsetFlag.Open), activeOrderCount: 0, currentPositionCount: 2);
 
         allowed.Should().BeFalse("开仓达 MaxPositionCount 应拒绝");
         reason.Should().Contain("2");
@@ -104,7 +104,7 @@ public class LocalRiskServiceTests
         var svc = new LocalRiskService(cfg, NullLogger<LocalRiskService>.Instance);
 
         var (allowed, _) = svc.CheckOrder(
-            Buy("ag2608", OffsetFlag.Close), currentOrderCount: 0, currentPositionCount: 2);
+            Buy("ag2608", OffsetFlag.Close), activeOrderCount: 0, currentPositionCount: 2);
 
         allowed.Should().BeTrue("平仓不增加持仓，应放行");
     }
@@ -117,7 +117,7 @@ public class LocalRiskServiceTests
         var cfg = new OrderConfig { RiskOpen = true };
         var svc = new LocalRiskService(cfg, NullLogger<LocalRiskService>.Instance);
 
-        var (allowed, _) = svc.CheckOrder(Buy("ag2608", volume: 0), currentOrderCount: 0, currentPositionCount: 0);
+        var (allowed, _) = svc.CheckOrder(Buy("ag2608", volume: 0), activeOrderCount: 0, currentPositionCount: 0);
 
         allowed.Should().BeFalse("数量必须 > 0");
     }

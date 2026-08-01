@@ -199,6 +199,21 @@ public class TradingViewModelTests
         vm.ShowWhiteGrid.Should().BeTrue();
         vm.CbZdtLock.Should().BeTrue();
         vm.CntrbySprdFctn.Should().Be(1);
+        vm.PriceLadderLevels.Should().Be(10, "过小配置应夹紧，真实窗口默认配置为每侧 20 格");
+    }
+
+    [Theory]
+    [InlineData(0, 10)]
+    [InlineData(9, 10)]
+    [InlineData(10, 10)]
+    [InlineData(32, 32)]
+    [InlineData(99, 32)]
+    public void RowHeight_is_clamped_when_hydrated_and_persisted(int configured, int expected)
+    {
+        var vm = CreateVm(new InstrumentWindow { InstrumentCode = "ag2608", RowHeight = configured });
+
+        vm.RowHeight.Should().Be(expected);
+        vm.ToInstrumentWindow().RowHeight.Should().Be(expected);
     }
 
     [Theory]
@@ -484,10 +499,10 @@ public class TradingViewModelTests
     // ── InstrumentDisplayName 初始值（期货格式，元数据到达前）──────────────
 
     [Fact]
-    public void InstrumentDisplayName_initial_futures_format_with_group()
+    public void InstrumentDisplayName_does_not_mix_group_number_into_title()
     {
         var vm = CreateVm(new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 3 });
-        vm.InstrumentDisplayName.Should().Be("ag2608 · 组 3");
+        vm.InstrumentDisplayName.Should().Be("ag2608");
     }
 
     [Fact]
@@ -497,6 +512,30 @@ public class TradingViewModelTests
         var vm = CreateVm(new InstrumentWindow { InstrumentCode = "ag2608", GroupId = 0 });
         vm.InstrumentDisplayName.Should().Be("ag2608");
     }
+
+    [Fact]
+    public void FormatInstrumentDisplayName_uses_name_and_code_for_futures()
+    {
+        var instrument = new Instrument { InstrumentId = "ag2608", Name = "白银2608", ProductClass = (byte)'1' };
+
+        TradingViewModel.FormatInstrumentDisplayName("ag2608", instrument, new DateTime(2026, 8, 1))
+            .Should().Be("白银2608 - ag2608");
+    }
+
+    [Fact]
+    public void FormatInstrumentDisplayName_appends_option_remaining_days_and_expiry()
+    {
+        var instrument = new Instrument
+        {
+            InstrumentId = "m2609-C-3200",
+            Name = "豆粕期权",
+            ProductClass = (byte)'2',
+            ExpireDate = "20260807"
+        };
+
+        TradingViewModel.FormatInstrumentDisplayName("m2609-C-3200", instrument, new DateTime(2026, 8, 1))
+            .Should().Be("豆粕期权 - m2609-C-3200 [6天 0807]");
+    }
 }
 
 /// <summary>
@@ -505,12 +544,19 @@ public class TradingViewModelTests
 /// </summary>
 internal sealed class StubKeyboardService : IKeyboardOperationService
 {
+    public ShortcutConfig CurrentConfiguration { get; } = new();
     public int SelectedPriceIndex => -1;
     public event EventHandler<int>? SelectedPriceIndexChanged { add { } remove { } }
     public void Register(KeyGesture gesture, Action action, string? description = null) { }
     public void Unregister(KeyGesture gesture) { }
     public bool Handle(KeyEventArgs e) => false;
     public void MoveSelection(int offset, int maxIndex) { }
+    public bool TryApplyConfiguration(ShortcutConfig configuration, out string error)
+    {
+        error = string.Empty;
+        return true;
+    }
+    public bool Matches(KeyboardShortcutAction action, KeyEventArgs e) => false;
 }
 
 /// <summary>

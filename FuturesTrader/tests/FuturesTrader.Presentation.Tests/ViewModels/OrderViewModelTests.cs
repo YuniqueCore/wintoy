@@ -119,10 +119,9 @@ public class OrderViewModelTests
     }
 
     [Fact]
-    public async Task SendOrder_increments_session_order_count_for_risk_tracking()
+    public async Task SendOrder_limits_active_orders_and_releases_capacity_after_canceled()
     {
-        var trading = new MockTradingService(NullLogger<MockTradingService>.Instance);
-        // MaxInputCount=1：第二次报单应被风控拒绝（计数从 0 起算）
+        var trading = new ManualTradingService();
         var risk = new LocalRiskService(
             new OrderConfig { RiskOpen = true, MaxInputCount = 1 },
             NullLogger<LocalRiskService>.Instance);
@@ -131,12 +130,24 @@ public class OrderViewModelTests
         vm.Quantity = 1;
 
         await vm.OrderCommand.ExecuteAsync();
-        var firstStatus = vm.StatusMessage;
-        firstStatus.Should().Contain("报单已提交");
+        vm.StatusMessage.Should().Contain("报单已提交");
+        vm.ActiveOrderCount.Should().Be(1);
+        trading.SentOrders.Should().ContainSingle();
 
-        // 第二次报单：会话报单计数已达 1，应被拒
         await vm.OrderCommand.ExecuteAsync();
-        vm.StatusMessage.Should().Contain("报单数已达上限", "MaxInputCount=1 应拒绝第二次报单");
+        vm.StatusMessage.Should().Contain("报单数已达上限", "已有一笔活动报单时应占满容量");
+        trading.SentOrders.Should().ContainSingle("被风控拒绝的报单不能进入交易服务");
+
+        await vm.CancelCommand.ExecuteAsync();
+        trading.CancelRequests.Should().ContainSingle().Which.OrderRef.Should().Be("1");
+        vm.ActiveOrderCount.Should().Be(1, "仅提交撤单请求不能提前释放容量");
+
+        trading.PublishCanceled("1");
+        vm.ActiveOrderCount.Should().Be(0, "收到 Canceled 终态后必须释放活动报单容量");
+
+        await vm.OrderCommand.ExecuteAsync();
+        trading.SentOrders.Should().HaveCount(2, "撤单完成后应允许重新报单");
+        vm.StatusMessage.Should().Contain("报单已提交");
     }
 
     // ── 价格 tick 校验 ──────────────────────────────────────

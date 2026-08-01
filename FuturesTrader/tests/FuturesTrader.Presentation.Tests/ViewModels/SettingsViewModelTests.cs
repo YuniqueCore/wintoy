@@ -50,7 +50,7 @@ public class SettingsViewModelTests
             NullLogger<UserAccountEditorViewModel>.Instance);
         theme ??= new ThemeService();
         return new SettingsViewModel(
-            repo, options, windowGroups, accounts, theme,
+            repo, options, windowGroups, accounts, theme, new KeyboardOperationService(),
             NullLogger<SettingsViewModel>.Instance);
     }
 
@@ -179,6 +179,17 @@ public class SettingsViewModelTests
         vm.CurrentSegment.Should().BeSameAs(vm, "外观段绑定到 SettingsViewModel 自身（主题属性）");
     }
 
+    [Fact]
+    public void Switching_to_shortcuts_section_sets_shortcut_editor()
+    {
+        var vm = CreateVm();
+
+        vm.CurrentSectionIndex = 6;
+
+        vm.CurrentSegment.Should().BeSameAs(vm.Shortcuts);
+        vm.Shortcuts.Bindings.Should().HaveCount(7);
+    }
+
     // ── Load/Save 编排 ──────────────────────────────────────────────
 
     [Fact]
@@ -221,6 +232,7 @@ public class SettingsViewModelTests
             NullLogger<UserAccountEditorViewModel>.Instance);
         var vm = new SettingsViewModel(
             repo, options, windowGroups, accounts, new ThemeService(),
+            new KeyboardOperationService(),
             NullLogger<SettingsViewModel>.Instance);
 
         await vm.LoadAsync();
@@ -233,6 +245,35 @@ public class SettingsViewModelTests
         var reloaded = repo.Load("test.ini");
         reloaded.Window.MainFont.Should().Be("ModifiedFont");
         reloaded.Order.MaxInputCount.Should().Be(99);
+    }
+
+    [Fact]
+    public async Task Save_persists_and_applies_recorded_shortcut()
+    {
+        var repo = new InMemoryConfigRepository(SeedConfig);
+        var options = Options.Create(new ConfigFileOptions { Path = "test.ini" });
+        var dataOptions = Options.Create(new DataFileOptions { UsersXml = "test_users.xml" });
+        var groupService = new WindowGroupService(
+            new InMemoryWindowGroupRepository(), new NullWindowHost(),
+            Options.Create(new WindowLayoutOptions()), NullLogger<WindowGroupService>.Instance);
+        var keyboard = new KeyboardOperationService();
+        var vm = new SettingsViewModel(
+            repo, options,
+            new WindowGroupBarViewModel(groupService, NullLogger<WindowGroupBarViewModel>.Instance),
+            new UserAccountEditorViewModel(new InMemoryAccountRepository(), dataOptions,
+                NullLogger<UserAccountEditorViewModel>.Instance),
+            new ThemeService(), keyboard, NullLogger<SettingsViewModel>.Instance);
+        await vm.LoadAsync();
+        var selective = vm.Shortcuts.Bindings.Single(binding =>
+            binding.Action == KeyboardShortcutAction.SelectiveCancelAll);
+        vm.Shortcuts.BeginRecordingCommand.Execute(selective);
+        vm.Shortcuts.TryAssign(System.Windows.Input.Key.F12, System.Windows.Input.ModifierKeys.Control)
+            .Should().BeTrue();
+
+        await vm.SaveCommand.ExecuteAsync(null);
+
+        repo.Load("test.ini").Shortcuts.SelectiveCancelAll.Should().Be("Ctrl+F12");
+        keyboard.CurrentConfiguration.SelectiveCancelAll.Should().Be("Ctrl+F12");
     }
 
     [Fact]

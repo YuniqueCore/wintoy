@@ -35,7 +35,6 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
     private readonly CompositeDisposable _subscriptions = new();
     private readonly SemaphoreSlim _placementGate = new(1, 1);
     private decimal _priceTick = 1m;
-    private int _sessionOrderCount;
     private int _longTodayPosition;
     private int _longYesterdayPosition;
     private int _longFrozenPosition;
@@ -216,7 +215,7 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
             var context = new OrderValidationContext
             {
                 Now = DateTime.Now,
-                CurrentOrderCount = _sessionOrderCount,
+                ActiveOrderCount = ActiveOrderCount,
                 CurrentPositionCount = CurrentPositionCount,
                 NearbyEnabled = nearbyEnabled,
                 NearbyThrottleMs = nearbyThresholdMs,
@@ -253,7 +252,7 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
         var context = new OrderValidationContext
         {
             Now = DateTime.Now,
-            CurrentOrderCount = _sessionOrderCount,
+            ActiveOrderCount = ActiveOrderCount,
             CurrentPositionCount = CurrentPositionCount
         };
         await SubmitOrderAsync(request, context).ConfigureAwait(true);
@@ -369,7 +368,6 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
             IsBusy = true;
             StatusMessage = "报单提交中…";
             var orderRef = await _trading.SendOrderAsync(request).ConfigureAwait(true);
-            Interlocked.Increment(ref _sessionOrderCount);
             var active = new ActiveOrder(
                 FrontId: 0,
                 SessionId: 0,
@@ -559,14 +557,14 @@ public sealed partial class OrderViewModel : ObservableObject, IDisposable
             var context = _deferredReplacementContext ?? new OrderValidationContext
             {
                 Now = DateTime.Now,
-                CurrentOrderCount = _sessionOrderCount,
+                ActiveOrderCount = ActiveOrderCount,
                 CurrentPositionCount = CurrentPositionCount
             };
             _deferredReplacementContext = null;
             await SubmitOrderAsync(replacement.PendingOrder, context with
             {
                 Now = DateTime.Now,
-                CurrentOrderCount = _sessionOrderCount,
+                ActiveOrderCount = ActiveOrderCount,
                 CurrentPositionCount = CurrentPositionCount
             }).ConfigureAwait(true);
         }

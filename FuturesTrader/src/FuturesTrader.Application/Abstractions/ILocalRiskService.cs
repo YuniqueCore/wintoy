@@ -9,7 +9,7 @@ namespace FuturesTrader.Application.Abstractions;
 /// <para>
 /// 校验维度：
 /// <list type="bullet">
-///   <item><b>报单数限制</b>：<see cref="OrderConfig.MaxInputCount"/>（0=不限制），防止刷单。</item>
+///   <item><b>活动报单数限制</b>：<see cref="OrderConfig.MaxInputCount"/>（0=不限制），防止活动委托过量。</item>
 ///   <item><b>持仓数限制</b>：<see cref="OrderConfig.MaxPositionCount"/>（0=不限制），防过度持仓。</item>
 ///   <item><b>撤单数限制</b>：按品种类型（股指 GZ/商品 SP/期权 QQ）分别计数，
 ///     <see cref="OrderConfig.Spck"/>/<see cref="OrderConfig.Gzck"/> 控制开关，
@@ -25,10 +25,10 @@ public interface ILocalRiskService
     /// 在 <see cref="ITradingService.SendOrderAsync"/> 调用 CTP 前执行。
     /// </summary>
     /// <param name="request">待提交的报单请求。</param>
-    /// <param name="currentOrderCount">当前会话已提交报单总数。</param>
+    /// <param name="activeOrderCount">当前尚未进入 Canceled/Filled/Rejected 终态的活动报单数。</param>
     /// <param name="currentPositionCount">当前持仓合约数。</param>
     /// <returns>校验结果：通过返回 <c>(true, null)</c>，拒绝返回 <c>(false, 拒绝原因)</c>。</returns>
-    (bool Allowed, string? Reason) CheckOrder(OrderRequest request, int currentOrderCount, int currentPositionCount);
+    (bool Allowed, string? Reason) CheckOrder(OrderRequest request, int activeOrderCount, int currentPositionCount);
 
     /// <summary>
     /// 校验撤单请求是否通过本地风控（撤单计数限制）。

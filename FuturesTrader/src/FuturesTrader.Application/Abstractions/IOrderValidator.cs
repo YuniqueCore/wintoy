@@ -39,8 +39,8 @@ public sealed record OrderValidationContext
     /// <summary>当前时间（CST，用于交易时段校验）。</summary>
     public DateTime Now { get; init; } = DateTime.Now;
 
-    /// <summary>当前会话已提交报单总数（对应 ILocalRiskService.CheckOrder 的 currentOrderCount）。</summary>
-    public int CurrentOrderCount { get; init; }
+    /// <summary>当前尚未进入 Canceled/Filled/Rejected 终态的活动报单数。</summary>
+    public int ActiveOrderCount { get; init; }
 
     /// <summary>当前持仓合约数（多+空，对应 ILocalRiskService.CheckOrder 的 currentPositionCount）。</summary>
     public int CurrentPositionCount { get; init; }

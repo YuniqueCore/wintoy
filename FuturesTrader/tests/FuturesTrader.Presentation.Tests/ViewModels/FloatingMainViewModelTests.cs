@@ -288,6 +288,8 @@ public class FloatingMainViewModelTests
 
         public void ApplyWhiteGridVisibilityToOpenWindows(bool showWhiteGrid) =>
             WhiteGridUpdates.Add(showWhiteGrid);
+
+        public void RecenterVisiblePriceLadders(PriceLadderAnchor anchor) { }
     }
 
     /// <summary>测试用窗口分组仓库桩：仅持有内存 WindowLayout。</summary>

@@ -1,3 +1,4 @@
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FuturesTrader.Application.Abstractions;
@@ -14,7 +15,7 @@ namespace FuturesTrader.Presentation.ViewModels;
 /// 设置窗口 ViewModel：整合 config.ini 三段编辑（Window/Order/User）+ 窗口分组管理 + 外观主题切换 + 交易账号 CRUD。
 /// <para>
 /// 设计原则：<b>启动即加载最新配置</b>（无需用户点加载按钮）；保存按钮显式触发落盘。
-/// 段落索引：0=Window, 1=Order, 2=User, 3=窗口分组, 4=交易账号, 5=外观。
+/// 段落索引：0=Window, 1=Order, 2=User, 3=窗口分组, 4=交易账号, 5=外观, 6=快捷键。
 /// </para>
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
@@ -22,6 +23,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly IConfigRepository _repo;
     private readonly ConfigFileOptions _options;
     private readonly IThemeService _theme;
+    private readonly IKeyboardOperationService _keyboard;
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly object _loadSync = new();
     private CloudConfig? _loadedConfig;
@@ -33,14 +35,17 @@ public sealed partial class SettingsViewModel : ObservableObject
         WindowGroupBarViewModel windowGroups,
         UserAccountEditorViewModel accounts,
         IThemeService theme,
+        IKeyboardOperationService keyboard,
         ILogger<SettingsViewModel> logger)
     {
         _repo = repo;
         _options = options.Value;
         _theme = theme;
+        _keyboard = keyboard;
         _logger = logger;
         WindowGroups = windowGroups;
         Accounts = accounts;
+        Shortcuts = new ShortcutConfigViewModel(_keyboard.CurrentConfiguration);
         // 订阅 Accounts.State 变化（交易账号段加载/保存/错误时刷新 CurrentState）
         accounts.PropertyChanged += (_, e) =>
         {
@@ -70,7 +75,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>交易账号管理段视图状态（CRUD + 列表编辑）。</summary>
     public UserAccountEditorViewModel Accounts { get; }
 
-    /// <summary>当前侧边栏选中的段索引（0=Window, 1=Order, 2=User, 3=窗口分组, 4=交易账号, 5=外观）。</summary>
+    /// <summary>合约窗口快捷键录制、冲突校验和重置草稿。</summary>
+    public ShortcutConfigViewModel Shortcuts { get; }
+
+    /// <summary>当前侧边栏选中的段索引（0=Window, 1=Order, 2=User, 3=窗口分组, 4=交易账号, 5=外观, 6=快捷键）。</summary>
     [ObservableProperty]
     public partial int CurrentSectionIndex { get; set; }
 
@@ -84,6 +92,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             3 => WindowGroups,
             4 => Accounts,
             5 => this, // 外观段直接绑 SettingsViewModel 自身的主题属性
+            6 => Shortcuts,
             _ => Window
         };
         OnPropertyChanged(nameof(CurrentState));
@@ -181,6 +190,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             Window.Hydrate(config.Window);
             Order.Hydrate(config.Order);
             User.Hydrate(config.User);
+            Shortcuts.Hydrate(config.Shortcuts);
+            if (!_keyboard.TryApplyConfiguration(config.Shortcuts, out var shortcutError))
+                throw new InvalidDataException(shortcutError);
             State = new ConfigEditorState.Loaded();
             _logger.LogInformation("配置已自动加载: {Path}", _options.Path);
         }
@@ -199,13 +211,17 @@ public sealed partial class SettingsViewModel : ObservableObject
         State = new ConfigEditorState.Saving();
         try
         {
+            var shortcutConfig = Shortcuts.ToConfig();
             var config = _loadedConfig with
             {
                 Window = Window.ToConfig(_loadedConfig.Window),
                 Order = Order.ToConfig(),
-                User = User.ToConfig(_loadedConfig.User)
+                User = User.ToConfig(_loadedConfig.User),
+                Shortcuts = shortcutConfig
             };
             await Task.Run(() => _repo.Save(_options.Path, config));
+            if (!_keyboard.TryApplyConfiguration(shortcutConfig, out var shortcutError))
+                throw new InvalidDataException(shortcutError);
             _loadedConfig = config;
             LastSavedAt = DateTime.Now;
             State = new ConfigEditorState.Loaded();

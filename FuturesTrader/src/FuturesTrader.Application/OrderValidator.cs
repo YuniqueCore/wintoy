@@ -69,7 +69,7 @@ public sealed class OrderValidator : IOrderValidator
 
         // 步骤 5：本地风控校验（报单数/持仓数限制）
         var (riskAllowed, riskReason) = _riskService.CheckOrder(
-            request, context.CurrentOrderCount, context.CurrentPositionCount);
+            request, context.ActiveOrderCount, context.CurrentPositionCount);
         if (!riskAllowed)
             return (false, riskReason ?? "本地风控拒绝");
 

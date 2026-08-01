@@ -34,7 +34,9 @@ public sealed class CtpTradingService : ITradingService
     private readonly Subject<OrderResult> _orders = new();
     private readonly Subject<Trade> _trades = new();
     private readonly Subject<Position> _positions = new();
-    private readonly Subject<Instrument> _instruments = new();
+    // 合约目录查询通常早于合约窗口创建；必须重放已收到的元数据，
+    // 否则后开的窗口只能显示代码，无法生成“名称 - 代码 [到期]”标题。
+    private readonly ReplaySubject<Instrument> _instruments = new();
     private readonly Subject<TradingAccount> _accounts = new();
     private readonly Subject<ConnectionState> _connection = new();
     private readonly object _apiLock = new();

@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using FuturesTrader.Domain.Configuration;
 
 namespace FuturesTrader.Presentation.Abstractions;
 
@@ -12,6 +13,15 @@ namespace FuturesTrader.Presentation.Abstractions;
 /// </summary>
 public interface IKeyboardOperationService
 {
+    /// <summary>当前已经通过解析和冲突校验、正在运行的快捷键配置。</summary>
+    ShortcutConfig CurrentConfiguration { get; }
+
+    /// <summary>原子校验并应用一套快捷键；失败时保留旧配置。</summary>
+    bool TryApplyConfiguration(ShortcutConfig configuration, out string error);
+
+    /// <summary>判断按键事件是否命中某个配置动作。</summary>
+    bool Matches(KeyboardShortcutAction action, KeyEventArgs e);
+
     /// <summary>当前选中的价位索引（PriceListControl 上下导航用，-1 表示未选中）。</summary>
     int SelectedPriceIndex { get; }
 
@@ -29,4 +39,16 @@ public interface IKeyboardOperationService
 
     /// <summary>移动选中价位（offset=±1 为上下移动一格；越界时夹紧到 [0, maxIndex]）。</summary>
     void MoveSelection(int offset, int maxIndex);
+}
+
+/// <summary>旧版已证实及端口保留的合约窗口键盘动作。</summary>
+public enum KeyboardShortcutAction
+{
+    SelectiveCancelAll,
+    ForceCancelAll,
+    RecenterAsk,
+    RecenterBid,
+    ToggleOnlyOpen,
+    MoveSelectionUp,
+    MoveSelectionDown
 }

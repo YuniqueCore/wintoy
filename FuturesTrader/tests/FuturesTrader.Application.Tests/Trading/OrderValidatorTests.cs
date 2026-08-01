@@ -33,7 +33,7 @@ public class OrderValidatorTests
     private static OrderValidationContext ValidContext() => new()
     {
         Now = new DateTime(2026, 7, 30, 9, 30, 0), // 交易时段内
-        CurrentOrderCount = 0,
+        ActiveOrderCount = 0,
         CurrentPositionCount = 0
     };
 
@@ -349,7 +349,7 @@ public class OrderValidatorTests
             CheckOrderCalled = false;
         }
 
-        public (bool Allowed, string? Reason) CheckOrder(OrderRequest request, int currentOrderCount, int currentPositionCount)
+        public (bool Allowed, string? Reason) CheckOrder(OrderRequest request, int activeOrderCount, int currentPositionCount)
         {
             CheckOrderCalled = true;
             return (_allowed, _reason);

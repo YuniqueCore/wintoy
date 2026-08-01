@@ -35,16 +35,16 @@ public sealed class LocalRiskService : ILocalRiskService
     }
 
     /// <inheritdoc />
-    public (bool Allowed, string? Reason) CheckOrder(OrderRequest request, int currentOrderCount, int currentPositionCount)
+    public (bool Allowed, string? Reason) CheckOrder(OrderRequest request, int activeOrderCount, int currentPositionCount)
     {
         if (!_config.RiskOpen)
             return (true, null);
 
-        // 报单数限制
-        if (_config.MaxInputCount > 0 && currentOrderCount >= _config.MaxInputCount)
+        // 活动报单数限制：Canceled/Filled/Rejected 后由调用方释放容量。
+        if (_config.MaxInputCount > 0 && activeOrderCount >= _config.MaxInputCount)
         {
-            var reason = $"本地风控：报单数已达上限 {_config.MaxInputCount}";
-            _logger.LogWarning("风控拒绝报单：{Reason}（当前 {Count}）", reason, currentOrderCount);
+            var reason = $"本地风控：活动报单数已达上限 {_config.MaxInputCount}";
+            _logger.LogWarning("风控拒绝报单：{Reason}（当前 {Count}）", reason, activeOrderCount);
             return (false, reason);
         }
 

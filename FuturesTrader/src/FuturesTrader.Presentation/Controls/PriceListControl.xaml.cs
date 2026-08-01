@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using FuturesTrader.Domain.MarketData;
 using FuturesTrader.Domain.Trading;
+using FuturesTrader.Presentation.Abstractions;
 
 namespace FuturesTrader.Presentation.Controls;
 
@@ -74,6 +75,7 @@ internal sealed class PriceListRow : INotifyPropertyChanged
     private int _pendingOrderCount;
     private bool _isLastPrice;
     private PriceDisplayZone _displayZone;
+    private bool _isKeyboardSelected;
 
     internal PriceListRow(PriceLevel source) => Update(source);
 
@@ -88,6 +90,8 @@ internal sealed class PriceListRow : INotifyPropertyChanged
     public bool IsLastPrice { get => _isLastPrice; private set => SetField(ref _isLastPrice, value); }
 
     public PriceDisplayZone DisplayZone { get => _displayZone; private set => SetField(ref _displayZone, value); }
+
+    public bool IsKeyboardSelected { get => _isKeyboardSelected; set => SetField(ref _isKeyboardSelected, value); }
 
     internal PriceRowTemplateKind TemplateKind => DisplayZone switch
     {
@@ -157,6 +161,7 @@ internal sealed class PriceListRows
 public sealed partial class PriceListControl : UserControl
 {
     private readonly PriceListRows _rows = new();
+    private int _keyboardSelectedIndex = -1;
 
     public static readonly DependencyProperty PriceLadderProperty =
         DependencyProperty.Register(
@@ -275,6 +280,8 @@ public sealed partial class PriceListControl : UserControl
     private void RefreshVisibleRows()
     {
         var structureChanged = _rows.Apply(PriceListLayout.SelectVisibleRows(PriceLadder, ShowWhiteGrid));
+        _keyboardSelectedIndex = Math.Min(_keyboardSelectedIndex, _rows.Items.Count - 1);
+        ApplyKeyboardSelection();
         if (structureChanged) ScrollToCenter();
     }
 
@@ -295,6 +302,48 @@ public sealed partial class PriceListControl : UserControl
             if (centerIndex < 0 || centerIndex >= PriceItemsControl.Items.Count) return;
             if (PriceItemsControl.ItemContainerGenerator.ContainerFromIndex(centerIndex) is FrameworkElement element)
                 element.BringIntoView();
+        }), System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    /// <summary>把键盘选中价位移动一格，并将选中行滚动到视口中央。</summary>
+    public void MoveKeyboardSelection(int offset)
+    {
+        if (_rows.Items.Count == 0) return;
+        var next = Math.Clamp(_keyboardSelectedIndex + offset, 0, _rows.Items.Count - 1);
+        if (next == _keyboardSelectedIndex) return;
+        _keyboardSelectedIndex = next;
+        ApplyKeyboardSelection();
+        ScrollIndexToCenter(next);
+    }
+
+    /// <summary>定位到当前价格梯中真实五档量对应的最优买价或最优卖价。</summary>
+    public void Recenter(PriceLadderAnchor anchor)
+    {
+        var candidates = _rows.Items
+            .Select((row, index) => (row, index))
+            .Where(item => anchor == PriceLadderAnchor.Ask
+                ? item.row.AskVolume > 0
+                : item.row.BidVolume > 0)
+            .ToArray();
+        if (candidates.Length == 0) return;
+        var target = anchor == PriceLadderAnchor.Ask
+            ? candidates.MinBy(item => item.row.Price)
+            : candidates.MaxBy(item => item.row.Price);
+        ScrollIndexToCenter(target.index);
+    }
+
+    private void ApplyKeyboardSelection()
+    {
+        for (var index = 0; index < _rows.Items.Count; index++)
+            _rows.Items[index].IsKeyboardSelected = index == _keyboardSelectedIndex;
+    }
+
+    private void ScrollIndexToCenter(int index)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var offset = index * RowHeight - (PriceScrollViewer.ViewportHeight - RowHeight) / 2;
+            PriceScrollViewer.ScrollToVerticalOffset(Math.Max(0, offset));
         }), System.Windows.Threading.DispatcherPriority.Background);
     }
 
