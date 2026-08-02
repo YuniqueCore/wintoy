@@ -1,8 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FuturesTrader.Application;
+using FuturesTrader.Domain.MarketData;
 using FuturesTrader.Domain.WindowGroups;
+using FuturesTrader.Presentation.Services;
 using Microsoft.Extensions.Logging;
 
 namespace FuturesTrader.Presentation.ViewModels;
@@ -17,12 +20,17 @@ public sealed partial class WindowGroupBarViewModel : ObservableObject
 {
     private readonly WindowGroupService _service;
     private readonly ILogger<WindowGroupBarViewModel> _logger;
+    private readonly InstrumentCatalogCache _instrumentCatalog;
     private WindowLayout? _loaded;
 
-    public WindowGroupBarViewModel(WindowGroupService service, ILogger<WindowGroupBarViewModel> logger)
+    public WindowGroupBarViewModel(
+        WindowGroupService service,
+        ILogger<WindowGroupBarViewModel> logger,
+        InstrumentCatalogCache? instrumentCatalog = null)
     {
         _service = service;
         _logger = logger;
+        _instrumentCatalog = instrumentCatalog ?? new InstrumentCatalogCache();
         Groups = new ObservableCollection<WindowGroupViewModel>(
             Enumerable.Range(1, 20).Select(i => new WindowGroupViewModel
             {
@@ -31,6 +39,7 @@ public sealed partial class WindowGroupBarViewModel : ObservableObject
                 Parent = this
             }));
         SelectedGroup = Groups[0];
+        _instrumentCatalog.InstrumentUpdated += OnInstrumentUpdated;
         // 启动即自动加载最新窗口布局
         _ = LoadAsync();
     }
@@ -219,14 +228,31 @@ public sealed partial class WindowGroupBarViewModel : ObservableObject
             {
                 var wvm = new InstrumentWindowViewModel
                 {
-                    InstrumentCode = w.InstrumentCode,
-                    GroupId = w.GroupId,
-                    IsOpen = _service.IsWindowOpen(w.InstrumentCode),
-                    Parent = this
+                    Parent = this,
                 };
+                wvm.Hydrate(
+                    w,
+                    _service.IsWindowOpen(w.InstrumentCode),
+                    _instrumentCatalog.Find(w.InstrumentCode));
                 vm.Windows.Add(wvm);
             }
         }
+    }
+
+    private void OnInstrumentUpdated(Instrument instrument)
+    {
+        void UpdateTitle()
+        {
+            foreach (var group in Groups)
+                foreach (var window in group.Windows)
+                    window.UpdateInstrument(instrument);
+        }
+
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is not null && !dispatcher.CheckAccess())
+            _ = dispatcher.BeginInvoke(UpdateTitle);
+        else
+            UpdateTitle();
     }
 
     private bool CanSave() => State is WindowGroupEditorState.Loaded;

@@ -2,7 +2,8 @@ namespace FuturesTrader.Domain.MarketData;
 
 /// <summary>
 /// 深度行情值对象：对齐 CTP <c>CThostFtdcDepthMarketDataField</c>（见 02-ctp-api.md §6）。
-/// 仅保留 0527.exe 实际使用的字段（最新价/开盘/最高/最低/量/额/持仓/涨跌停/5 档买卖盘）。
+/// 仅保留 0527.exe 实际使用的字段（最新价/开盘/最高/最低/量/额/持仓/涨跌停/买卖盘）。
+/// 真实 CTP 适配器提供五档；离线 Mock 可以提供扩展档位以覆盖完整价格梯展示。
 /// 不可变 record，行情推送时整体替换（避免部分更新导致的脏读）。
 /// </summary>
 public sealed record DepthMarketData
@@ -25,22 +26,22 @@ public sealed record DepthMarketData
     public TimeOnly UpdateTime { get; init; }
     public int UpdateMillisec { get; init; }
 
-    /// <summary>5 档买价（BidPrice1 最近买盘）。</summary>
+    /// <summary>买价序列（真实 CTP 为 5 档，BidPrice1 最近买盘）。</summary>
     public IReadOnlyList<decimal> BidPrices { get; init; } = Array.Empty<decimal>();
 
-    /// <summary>5 档买量。</summary>
+    /// <summary>买量序列（与 <see cref="BidPrices"/> 对齐）。</summary>
     public IReadOnlyList<int> BidVolumes { get; init; } = Array.Empty<int>();
 
-    /// <summary>5 档卖价（AskPrice1 最近卖盘）。</summary>
+    /// <summary>卖价序列（真实 CTP 为 5 档，AskPrice1 最近卖盘）。</summary>
     public IReadOnlyList<decimal> AskPrices { get; init; } = Array.Empty<decimal>();
 
-    /// <summary>5 档卖量。</summary>
+    /// <summary>卖量序列（与 <see cref="AskPrices"/> 对齐）。</summary>
     public IReadOnlyList<int> AskVolumes { get; init; } = Array.Empty<int>();
 
     /// <summary>
     /// 以真实卖一/买一为边界生成价格梯：卖一向上生成 <paramref name="askQuoteRowCount"/> 行，
     /// 买一向下生成 <paramref name="bidQuoteRowCount"/> 行，二者之间的白格完全按价差自动生成。
-    /// 5 档买卖盘只按真实价位填量，延伸区域绝不伪造盘口量。
+    /// 只按输入序列中的真实价位填量：CTP 路径不会扩展五档，Mock 路径可显式提供扩展深度。
     /// <para>
     /// <paramref name="pendingByPrice"/> 可选：把外部维护的「价格 → 用户本地挂单数」聚合传入，
     /// 让 <see cref="PriceLevel.PendingOrderCount"/> 在 UI 第 0 列直接显示（点击可撤单）。
@@ -131,7 +132,7 @@ public sealed record DepthMarketData
         return PriceDisplayZone.Unquoted;
     }
 
-    /// <summary>在 5 档报价中查找指定价位的挂单量（价位四舍五入到 tick）。</summary>
+    /// <summary>在输入报价序列中查找指定价位的挂单量（价位四舍五入到 tick）。</summary>
     private static int VolumeAt(decimal price, IReadOnlyList<decimal> prices, IReadOnlyList<int> volumes, decimal tick)
     {
         for (int i = 0; i < prices.Count && i < volumes.Count; i++)

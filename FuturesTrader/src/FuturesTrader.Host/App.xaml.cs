@@ -146,6 +146,7 @@ public partial class App : System.Windows.Application
 
                 // ── 主题服务 ──
                 services.AddSingleton<IThemeService, ThemeService>();
+                services.AddSingleton<InstrumentCatalogCache>();
 
                 // ── 行情/交易服务工厂（按 Provider 选型，登录后由 SessionService 调用）──
                 services.AddSingleton<IMarketDataServiceFactory>(sp =>

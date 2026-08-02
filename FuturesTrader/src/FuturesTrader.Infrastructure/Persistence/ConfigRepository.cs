@@ -114,6 +114,8 @@ public sealed class ConfigRepository : IConfigRepository
         MouseWheelSpeed = s.GetInt("MouseWheelSpeed", 3),
         AutoSize = s.GetBool("AutoSize"),
         TickRowHeights = s.GetInt("TickRowHeights", 12),
+        AskQuoteRowCount = s.GetInt("AskQuoteRowCount", 30),
+        BidQuoteRowCount = s.GetInt("BidQuoteRowCount", 30),
         InstrumentWindowHeights = s.GetInt("InstrumentWindowHeights", 1000),
         PriceListRatios = s.GetIntArray("PriceListRatios", [10, 25, 30, 25, 10])
     };
@@ -186,6 +188,8 @@ public sealed class ConfigRepository : IConfigRepository
         yield return $"MouseWheelSpeed={c.Window.MouseWheelSpeed}";
         yield return $"AutoSize={(c.Window.AutoSize ? 1 : 0)}";
         yield return $"TickRowHeights={c.Window.TickRowHeights}";
+        yield return $"AskQuoteRowCount={c.Window.AskQuoteRowCount}";
+        yield return $"BidQuoteRowCount={c.Window.BidQuoteRowCount}";
         yield return $"InstrumentWindowHeights={c.Window.InstrumentWindowHeights}";
         yield return $"PriceListRatios={string.Join(',', c.Window.PriceListRatios)}";
         yield return $"PriceListMargin={c.Window.PriceListMargin}";

@@ -30,10 +30,6 @@
             <Setter Property="Content" Value="{Binding Id}"/>
             <Setter Property="Command" Value="{Binding OpenCommand}"/>
             <Style.Triggers>
-                <DataTrigger Binding="{Binding WindowCount}" Value="0">
-                    <Setter Property="IsEnabled" Value="False"/>
-                    <Setter Property="Opacity" Value="0.4"/>
-                </DataTrigger>
                 <DataTrigger Binding="{Binding IsSelected}" Value="True">
                     <Setter Property="Background" Value="{DynamicResource SystemFillColorSuccessBackgroundBrush}"/>
                 </DataTrigger>
@@ -239,7 +235,8 @@
                                                 Icon="{ui:SymbolIcon Link24}"
                                                 ToolTip="切换窗口同步（成组/独立）"
                                                 Margin="2,0,0,0"/>
-                    <ui:Button Icon="{ui:SymbolIcon Settings24}" ToolTip="设置"
+                    <ui:Button AutomationProperties.AutomationId="FloatingOpenSettingsButton"
+                               Icon="{ui:SymbolIcon Settings24}" ToolTip="设置"
                                Command="{Binding OpenSettingsCommand}" Padding="6,3" Margin="2,0,0,0"/>
                     <ui:Button Icon="{ui:SymbolIcon ArrowMinimize24}" ToolTip="最小化"
                                Click="OnMinimize" Padding="6,3" Margin="2,0,0,0"/>

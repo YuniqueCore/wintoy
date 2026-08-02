@@ -6,6 +6,7 @@ using FuturesTrader.Application;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
 using FuturesTrader.Domain.Connections;
+using FuturesTrader.Domain.Configuration;
 using FuturesTrader.Domain.MarketData;
 using FuturesTrader.Domain.Trading;
 using FuturesTrader.Domain.WindowGroups;
@@ -88,6 +89,38 @@ public class FloatingMainViewModelTests
         vm.AbMode.Should().Be(FloatingAbMode.B,
             "合约窗口和 Users.xml 的安全默认均为 B，浮动栏必须与实际下单模式一致");
         vm.ShowWhiteGrid.Should().BeTrue("白格默认应勾选并显示无人报价价位行");
+    }
+
+    [Fact]
+    public void Empty_group_can_be_selected_as_the_target_for_later_instrument_search()
+    {
+        var host = new StubWindowHost();
+        var vm = CreateVm(windowHost: host);
+
+        vm.OpenGroupFromButton(4);
+
+        vm.SelectedGroupId.Should().Be(4);
+        vm.Groups.Single(group => group.Id == 4).IsSelected.Should().BeTrue();
+        vm.Groups.Single(group => group.Id == 4).WindowCount.Should().Be(0);
+        host.OpenedGroups.Should().Equal(4);
+    }
+
+    [Fact]
+    public void Search_selection_adds_and_opens_an_instrument_in_the_selected_empty_group()
+    {
+        var repository = new StubWindowGroupRepository(new WindowLayout());
+        var host = new StubWindowHost();
+        var vm = CreateVm(groupRepo: repository, windowHost: host);
+        vm.OpenGroupFromButton(4);
+        var instrument = new Instrument { InstrumentId = "au2610", Name = "黄金2610" };
+
+        vm.AddInstrumentToGroupCommand.Execute(instrument);
+
+        repository.Current.Windows.Should().ContainSingle(window =>
+            window.InstrumentCode == "au2610" && window.GroupId == 4);
+        host.OpenedWindows.Should().ContainSingle(window =>
+            window.InstrumentCode == "au2610" && window.GroupId == 4);
+        vm.Groups.Single(group => group.Id == 4).WindowCount.Should().Be(1);
     }
 
     [Fact]
@@ -313,11 +346,12 @@ public class FloatingMainViewModelTests
     private sealed class StubWindowHost : IWindowHost
     {
         public List<int> OpenedGroups { get; } = [];
+        public List<InstrumentWindow> OpenedWindows { get; } = [];
         public List<int> HiddenGroups { get; } = [];
         public List<int> ClosedGroups { get; } = [];
 
         public bool IsOpen(string instrumentCode) => false;
-        public void Open(InstrumentWindow window) { }
+        public void Open(InstrumentWindow window) => OpenedWindows.Add(window);
         public void OpenGroup(IReadOnlyList<InstrumentWindow> windows, int groupId) => OpenedGroups.Add(groupId);
         public IReadOnlyList<string> GetOpenWindowsInGroup(int groupId) => Array.Empty<string>();
         public void HideGroup(int groupId) => HiddenGroups.Add(groupId);
@@ -341,16 +375,19 @@ public class FloatingMainViewModelTests
         public void ApplyWhiteGridVisibilityToOpenWindows(bool showWhiteGrid) =>
             WhiteGridUpdates.Add(showWhiteGrid);
 
+        public void ApplyWindowDisplayConfigurationToOpenWindows(WindowConfig configuration) { }
+
         public void RecenterVisiblePriceLadders(PriceLadderAnchor anchor) { }
     }
 
     /// <summary>测试用窗口分组仓库桩：仅持有内存 WindowLayout。</summary>
     private sealed class StubWindowGroupRepository : IWindowGroupRepository
     {
-        private readonly WindowLayout _layout;
+        private WindowLayout _layout;
         public StubWindowGroupRepository(WindowLayout layout) => _layout = layout;
+        public WindowLayout Current => _layout;
         public WindowLayout Load(WindowLayoutOptions options) => _layout;
-        public void Save(WindowLayoutOptions options, WindowLayout layout) { }
+        public void Save(WindowLayoutOptions options, WindowLayout layout) => _layout = layout;
     }
 
     /// <summary>NullLoggerFactory 兼容垫片（MEL Extensions 8+ 已合并到 NullLogger.Instance）。</summary>

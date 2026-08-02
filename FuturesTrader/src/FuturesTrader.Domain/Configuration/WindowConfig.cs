@@ -32,8 +32,14 @@ public sealed record WindowConfig
     /// <summary>窗口大小自动调整开关</summary>
     public bool AutoSize { get; init; }
 
-    /// <summary>Tick 行高</summary>
+    /// <summary>所有合约窗口共用的价格梯单行高度。</summary>
     public int TickRowHeights { get; init; } = 12;
+
+    /// <summary>所有合约窗口共用的卖一向上空区行数。</summary>
+    public int AskQuoteRowCount { get; init; } = 30;
+
+    /// <summary>所有合约窗口共用的买一向下多区行数。</summary>
+    public int BidQuoteRowCount { get; init; } = 30;
 
     /// <summary>合约窗口高度</summary>
     public int InstrumentWindowHeights { get; init; } = 1000;

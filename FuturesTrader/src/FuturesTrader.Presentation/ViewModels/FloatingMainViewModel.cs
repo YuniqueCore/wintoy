@@ -10,6 +10,7 @@ using FuturesTrader.Domain.MarketData;
 using FuturesTrader.Domain.Trading;
 using FuturesTrader.Domain.WindowGroups;
 using FuturesTrader.Presentation.Abstractions;
+using FuturesTrader.Presentation.Services;
 using FuturesTrader.Presentation.WindowHosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -37,6 +38,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     private readonly UiOptions _uiOptions;
     private readonly ILogger<FloatingMainViewModel> _logger;
     private readonly ILoggerFactory _loggerFactory;
+    private readonly InstrumentCatalogCache _instrumentCatalog;
     private readonly CompositeDisposable _subscriptions = new();
     private WindowLayout? _layout;
     private readonly ObservableCollection<Instrument> _allInstruments = new();
@@ -51,7 +53,8 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
         GroupSynchronizationCoordinator sync,
         IOptions<UiOptions> uiOptions,
         ILogger<FloatingMainViewModel> logger,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        InstrumentCatalogCache? instrumentCatalog = null)
     {
         _session = session;
         _groupService = groupService;
@@ -61,6 +64,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
         _uiOptions = uiOptions.Value;
         _logger = logger;
         _loggerFactory = loggerFactory;
+        _instrumentCatalog = instrumentCatalog ?? new InstrumentCatalogCache();
 
         Groups = new ObservableCollection<GroupButtonViewModel>(
             Enumerable.Range(1, 20).Select(i => new GroupButtonViewModel
@@ -389,6 +393,7 @@ public sealed partial class FloatingMainViewModel : ObservableObject, IDisposabl
     private void OnInstrumentReceived(Instrument instrument)
     {
         _allInstruments.Add(instrument);
+        _instrumentCatalog.Upsert(instrument);
     }
 
     /// <summary>选中合约后添加到当前分组：AssignWindowToGroup + Save + Open 新窗口。</summary>

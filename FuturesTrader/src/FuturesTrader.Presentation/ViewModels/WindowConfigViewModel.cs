@@ -42,6 +42,12 @@ public sealed partial class WindowConfigViewModel : ObservableObject
     public partial int TickRowHeights { get; set; } = 12;
 
     [ObservableProperty]
+    public partial int AskQuoteRowCount { get; set; } = 30;
+
+    [ObservableProperty]
+    public partial int BidQuoteRowCount { get; set; } = 30;
+
+    [ObservableProperty]
     public partial int InstrumentWindowHeights { get; set; } = 1000;
 
     /// <summary>从 Domain record 拷贝到 VM 可变字段。</summary>
@@ -56,7 +62,9 @@ public sealed partial class WindowConfigViewModel : ObservableObject
         NarrowReduceLength = w.NarrowReduceLength;
         MouseWheelSpeed = w.MouseWheelSpeed;
         AutoSize = w.AutoSize;
-        TickRowHeights = w.TickRowHeights;
+        TickRowHeights = Math.Clamp(w.TickRowHeights, 10, 32);
+        AskQuoteRowCount = Math.Clamp(w.AskQuoteRowCount, 5, 100);
+        BidQuoteRowCount = Math.Clamp(w.BidQuoteRowCount, 5, 100);
         InstrumentWindowHeights = w.InstrumentWindowHeights;
     }
 
@@ -72,7 +80,9 @@ public sealed partial class WindowConfigViewModel : ObservableObject
         NarrowReduceLength = NarrowReduceLength,
         MouseWheelSpeed = MouseWheelSpeed,
         AutoSize = AutoSize,
-        TickRowHeights = TickRowHeights,
+        TickRowHeights = Math.Clamp(TickRowHeights, 10, 32),
+        AskQuoteRowCount = Math.Clamp(AskQuoteRowCount, 5, 100),
+        BidQuoteRowCount = Math.Clamp(BidQuoteRowCount, 5, 100),
         InstrumentWindowHeights = InstrumentWindowHeights
     };
 }

@@ -164,7 +164,9 @@
                          Tag="{x:Static trading:PriceLadderTradeSide.SecondTradeColumn}"
                          Click="OnTradeCellClick"
                          PreviewMouseDown="OnTradeCellMouseDown">
-                    <TextBlock Text="{Binding AskVolume}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    <TextBlock Text="{Binding AskVolume}"
+                               AutomationProperties.AutomationId="AskDepthVolume"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{DynamicResource PriceListAskVolumeForegroundBrush}"/>
                 </Button>
                 <TextBlock Grid.Column="4" Text=""/>
@@ -204,7 +206,9 @@
                          Tag="{x:Static trading:PriceLadderTradeSide.FirstTradeColumn}"
                          Click="OnTradeCellClick"
                          PreviewMouseDown="OnTradeCellMouseDown">
-                    <TextBlock Text="{Binding BidVolume}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    <TextBlock Text="{Binding BidVolume}"
+                               AutomationProperties.AutomationId="BidDepthVolume"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{DynamicResource PriceListBidVolumeForegroundBrush}"/>
                 </Button>
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
@@ -299,7 +303,9 @@
                          Tag="{x:Static trading:PriceLadderTradeSide.FirstTradeColumn}"
                          Click="OnTradeCellClick"
                          PreviewMouseDown="OnTradeCellMouseDown">
-                    <TextBlock Text="{Binding BidVolume}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding BidVolume}"
+                               AutomationProperties.AutomationId="BidDepthVolume"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
                 </Button>
                 <TextBlock Grid.Column="2" Text="{Binding Price, StringFormat={}{0:0.##}}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"/>
@@ -308,7 +314,9 @@
                          Tag="{x:Static trading:PriceLadderTradeSide.SecondTradeColumn}"
                          Click="OnTradeCellClick"
                          PreviewMouseDown="OnTradeCellMouseDown">
-                    <TextBlock Text="{Binding AskVolume}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
+                    <TextBlock Text="{Binding AskVolume}"
+                               AutomationProperties.AutomationId="AskDepthVolume"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"/>
                 </Button>
                 <TextBlock Grid.Column="4" Text=""/>
                 <Control Grid.ColumnSpan="5" Panel.ZIndex="10" IsHitTestVisible="False"

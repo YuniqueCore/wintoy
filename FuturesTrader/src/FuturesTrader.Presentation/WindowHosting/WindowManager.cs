@@ -1,6 +1,7 @@
 using System.Windows;
 using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
+using FuturesTrader.Domain.Configuration;
 using FuturesTrader.Domain.Trading;
 using FuturesTrader.Domain.WindowGroups;
 using FuturesTrader.Presentation.Abstractions;
@@ -31,7 +32,9 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
     private readonly IGlobalOrderCancellationService _globalCancellation;
     private readonly GroupSynchronizationCoordinator _sync;
     private readonly IWindowGroupRepository _windowGroupRepository;
+    private readonly IConfigRepository _configRepository;
     private readonly WindowLayoutOptions _windowLayoutOptions;
+    private readonly ConfigFileOptions _configFileOptions;
     private readonly UiOptions _uiOptions;
     private readonly ILogger<WindowManager> _logger;
 
@@ -46,7 +49,9 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
         IGlobalOrderCancellationService globalCancellation,
         GroupSynchronizationCoordinator sync,
         IWindowGroupRepository windowGroupRepository,
+        IConfigRepository configRepository,
         IOptions<WindowLayoutOptions> windowLayoutOptions,
+        IOptions<ConfigFileOptions> configFileOptions,
         IOptions<UiOptions> uiOptions,
         ILogger<WindowManager> logger)
     {
@@ -56,7 +61,9 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
         _globalCancellation = globalCancellation;
         _sync = sync;
         _windowGroupRepository = windowGroupRepository;
+        _configRepository = configRepository;
         _windowLayoutOptions = windowLayoutOptions.Value;
+        _configFileOptions = configFileOptions.Value;
         _uiOptions = uiOptions.Value;
         _logger = logger;
     }
@@ -105,6 +112,25 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
     });
 
     /// <inheritdoc />
+    public void ApplyWindowDisplayConfigurationToOpenWindows(WindowConfig configuration) => OnUi(() =>
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        var viewModels = SnapshotOpenViewModels();
+        foreach (var viewModel in viewModels)
+        {
+            viewModel.RowHeight = Math.Clamp(configuration.TickRowHeights, 10, 32);
+            viewModel.AskQuoteRowCount = Math.Clamp(configuration.AskQuoteRowCount, 5, 100);
+            viewModel.BidQuoteRowCount = Math.Clamp(configuration.BidQuoteRowCount, 5, 100);
+        }
+        _logger.LogInformation(
+            "共享合约窗口显示配置已应用到 {Count} 个窗口：RowHeight={RowHeight} AskRows={AskRows} BidRows={BidRows}",
+            viewModels.Count,
+            configuration.TickRowHeights,
+            configuration.AskQuoteRowCount,
+            configuration.BidQuoteRowCount);
+    });
+
+    /// <inheritdoc />
     public void RecenterVisiblePriceLadders(PriceLadderAnchor anchor) => OnUi(() =>
     {
         List<TradingWindow> visible;
@@ -145,8 +171,15 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
         var trading = _session.Trading
             ?? throw new InvalidOperationException("交易服务未初始化（未登录或已登出）");
 
+        var sharedDisplay = LoadWindowConfiguration();
+        var effectiveWindow = window with
+        {
+            RowHeight = Math.Clamp(sharedDisplay.TickRowHeights, 10, 32),
+            AskQuoteRowCount = Math.Clamp(sharedDisplay.AskQuoteRowCount, 5, 100),
+            BidQuoteRowCount = Math.Clamp(sharedDisplay.BidQuoteRowCount, 5, 100),
+        };
         var vm = (TradingViewModel)ActivatorUtilities.CreateInstance(
-            _services, typeof(TradingViewModel), window, marketData, trading);
+            _services, typeof(TradingViewModel), effectiveWindow, marketData, trading);
         vm.ShowWhiteGrid = _showWhiteGrid;
 
         // 新窗口（Left/Top=0 未设置位置）追加到同组已有窗口的最右侧对齐
@@ -208,6 +241,8 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
     /// <inheritdoc />
     public void OpenGroup(IReadOnlyList<InstrumentWindow> windows, int groupId) => OnUi(() =>
     {
+        // 空组同样代表一次有效的组切换：必须先隐藏其他组，再显示“无合约窗口”的目标状态。
+        HideOtherGroups(groupId);
         if (windows.Count == 0)
         {
             _logger.LogInformation("分组 {GroupId} 无窗口", groupId);
@@ -216,8 +251,6 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
 
         // 单组显示：先把其他分组的窗口隐藏（不关，保留 VM/状态/订阅），
         // 避免多组同屏混乱。对齐 0527.exe「点组号 → 只显该组」的语义。
-        HideOtherGroups(groupId);
-
         // 水平紧密排列 + 整组居中：计算总宽度后从屏幕工作区水平居中起始。
         // 关键修复：用 ClampWidth 强制最小宽度 320（默认 271 太小导致叠加时窗口收窄不可见），
         // 并用 Open 后的实际窗口宽度（ActualWidth）作为下一个窗口的左偏移计算依据，
@@ -256,6 +289,19 @@ public sealed class WindowManager : IWindowHost, ITradingWindowInteractionServic
         _logger.LogInformation("已恢复分组 {GroupId} 的 {Count} 个窗口（隐藏其他组 + 重排）",
             groupId, windows.Count);
     });
+
+    private WindowConfig LoadWindowConfiguration()
+    {
+        try
+        {
+            return _configRepository.Load(_configFileOptions.Path).Window;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "读取共享合约窗口显示配置失败，使用安全默认值");
+            return new WindowConfig();
+        }
+    }
 
     /// <summary>恢复已有窗口时仅更新几何和可见性，不重新构造其 ViewModel。</summary>
     private bool RestoreOpenWindow(InstrumentWindow config)

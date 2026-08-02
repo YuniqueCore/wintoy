@@ -33,7 +33,7 @@ public class TradingWindowInteractionTests
             var windows = WaitForTradingWindows(minimumCount: 3);
             AssertAlignedWithoutOverlap(windows);
             AssertContractTitles(windows);
-            AssertAbModeBroadcast(floating, windows);
+            AssertFloatingAbModeIsTheOnlyPlacementModeEntry(floating, windows);
 
             var tradingWindow = SelectMostVisibleWindow(windows);
             SetGroupSync(floating, enabled: false);
@@ -43,8 +43,8 @@ public class TradingWindowInteractionTests
             Thread.Sleep(200);
             AssertSpreadLockInputsAreStacked(tradingWindow);
             AssertNarrowEditorValuesAreVisible(tradingWindow);
-            AssertQuoteRowCountSteppers(tradingWindow);
-            AssertPriceRowHeightStepper(tradingWindow);
+            AssertRegionSettingsAreAbsentFromContractWindow(tradingWindow);
+            AssertExtendedMockDepthVolumes(tradingWindow);
             AssertFooterShowsHintWithoutStatusOverlap(tradingWindow);
             tradingWindow.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByAutomationId("PendingOrderHeader"))
                 .Should().NotBeNull("价格梯必须明确显示挂单剩余手数列");
@@ -265,6 +265,25 @@ public class TradingWindowInteractionTests
                 ? windows
                 : null;
         }, TimeSpan.FromSeconds(5)).Should().NotBeNull("连续切组应在当前组和前组之间往返");
+
+        // 空组选择是独立行为，不应改写上面对“切组”双向历史的断言前置条件。
+        var emptyGroup = FindGroupButton(floating, "4");
+        emptyGroup.IsEnabled.Should().BeTrue("空组也必须能被选择为搜索上屏的目标组");
+        emptyGroup.Invoke();
+        UiTestHelpers.WaitTrue(() => FindTradingWindows().Length == 0, TimeSpan.FromSeconds(5))
+            .Should().BeTrue("点击空组后当前画面应没有合约窗口，不能残留前一组");
+
+        FindGroupButton(floating, "2").Invoke();
+        UiTestHelpers.WaitFor(() =>
+        {
+            var windows = FindTradingWindows();
+            return windows.Length == group2Handles.Count
+                   && windows.Select(window => window.FrameworkAutomationElement.NativeWindowHandle.Value)
+                       .ToHashSet().SetEquals(group2Handles)
+                ? windows
+                : null;
+        }, TimeSpan.FromSeconds(5)).Should().NotBeNull(
+            "从空组切回有窗口的组时应恢复原窗口实例");
     }
 
     private Button FindGroupButton(Window floating, string groupId)
@@ -274,8 +293,7 @@ public class TradingWindowInteractionTests
                 _fixture.Automation.ConditionFactory.ByName(groupId)
                     .And(_fixture.Automation.ConditionFactory.ByControlType(ControlType.Button)))?.AsButton(),
             TimeSpan.FromSeconds(5));
-        button.Should().NotBeNull($"测试配置的第 {groupId} 组应包含合约窗口");
-        button!.IsEnabled.Should().BeTrue();
+        button.Should().NotBeNull($"应找到第 {groupId} 组按钮");
         return button;
     }
 
@@ -361,9 +379,6 @@ public class TradingWindowInteractionTests
         {
             "LeftOrderQuantity",
             "RightOrderQuantity",
-            "AskQuoteRowCountStep",
-            "BidQuoteRowCountStep",
-            "PriceRowHeightStep",
             "CounterpartySpreadPoint",
             "CounterpartySpreadFactor"
         };
@@ -386,110 +401,60 @@ public class TradingWindowInteractionTests
         }
     }
 
-    private void AssertQuoteRowCountSteppers(Window tradingWindow)
+    private void AssertRegionSettingsAreAbsentFromContractWindow(Window tradingWindow)
     {
-        var askStepper = tradingWindow.FindFirstDescendant(
-            _fixture.Automation.ConditionFactory.ByAutomationId("AskQuoteRowCountStep"));
-        var bidStepper = tradingWindow.FindFirstDescendant(
-            _fixture.Automation.ConditionFactory.ByAutomationId("BidQuoteRowCountStep"));
-        askStepper.Should().NotBeNull();
-        bidStepper.Should().NotBeNull();
-        var askEditor = (askStepper!.ControlType == ControlType.Edit
-            ? askStepper
-            : askStepper.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByControlType(ControlType.Edit)))!;
-        var bidEditor = (bidStepper!.ControlType == ControlType.Edit
-            ? bidStepper
-            : bidStepper.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByControlType(ControlType.Edit)))!;
-        askEditor.AsTextBox().Text.Should().Be("30");
-        bidEditor.AsTextBox().Text.Should().Be("30");
-
-        var automatic = tradingWindow.FindFirstDescendant(
-            _fixture.Automation.ConditionFactory.ByAutomationId("AutomaticWhiteGridCount"));
-        automatic.Should().NotBeNull();
-        automatic!.Name.Should().MatchRegex("自动 [1-9][0-9]* 格 · 共 [0-9]+ 格",
-            "白格数量和价格梯实际总行数应直接展示，不能依赖虚拟化容器猜测");
-        var beforeTotal = ParseTotalRows(automatic.Name);
-        beforeTotal.Should().BeGreaterThan(60, "默认应包含空 30、多 30 以及自动计算的白格");
-
-        askEditor.Focus();
-        askEditor.AsTextBox().Text = "35";
-        bidEditor.Focus(); // NumberBox 在失焦时提交文本到 Value 绑定
-        UiTestHelpers.WaitTrue(
-            () => ParseTotalRows(automatic.Name) == beforeTotal + 5,
-            TimeSpan.FromSeconds(5)).Should().BeTrue("空区改为 35 后应立即多显示 5 个可点击格子");
-        askEditor.Focus();
-        askEditor.AsTextBox().Text = "30";
-        bidEditor.Focus();
-        UiTestHelpers.WaitTrue(
-            () => ParseTotalRows(automatic.Name) == beforeTotal,
-            TimeSpan.FromSeconds(5)).Should().BeTrue("测试结束恢复空区默认值，避免污染窗口配置");
+        var removedIds = new[]
+        {
+            "AskQuoteRowCountStep",
+            "AutomaticWhiteGridCount",
+            "BidQuoteRowCountStep",
+            "PriceRowHeightStep",
+        };
+        foreach (var automationId in removedIds)
+        {
+            tradingWindow.FindFirstDescendant(
+                    _fixture.Automation.ConditionFactory.ByAutomationId(automationId))
+                .Should().BeNull($"{automationId} 已迁移到 Settings，不应继续占用合约窗口左栏");
+        }
     }
 
-    private static int ParseTotalRows(string summary)
+    private void AssertExtendedMockDepthVolumes(Window tradingWindow)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(summary, @"共\s+(\d+)\s+格");
-        return match.Success && int.TryParse(match.Groups[1].Value, out var count) ? count : -1;
+        var askVolumes = tradingWindow.FindAllDescendants(
+            _fixture.Automation.ConditionFactory.ByAutomationId("AskDepthVolume"));
+        var bidVolumes = tradingWindow.FindAllDescendants(
+            _fixture.Automation.ConditionFactory.ByAutomationId("BidDepthVolume"));
+        askVolumes.Count(element => int.TryParse(element.Name, out var value) && value > 0)
+            .Should().BeGreaterThan(5, "Mock 空区第 6 格以后也应显示动态卖量");
+        bidVolumes.Count(element => int.TryParse(element.Name, out var value) && value > 0)
+            .Should().BeGreaterThan(5, "Mock 多区第 6 格以后也应显示动态买量");
     }
 
-    private void AssertAbModeBroadcast(Window floating, IReadOnlyList<Window> windows)
+    private void AssertFloatingAbModeIsTheOnlyPlacementModeEntry(Window floating, IReadOnlyList<Window> windows)
     {
-        windows.All(window =>
-            window.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByAutomationId("ContractAbModeB"))
-                ?.AsRadioButton().IsChecked == true).Should().BeTrue(
-            "Users.xml、合约窗口和浮动栏默认都应是 B 模式");
+        windows.Should().OnlyContain(window =>
+                window.FindFirstDescendant(
+                    _fixture.Automation.ConditionFactory.ByAutomationId("ContractAbModeA")) == null
+                && window.FindFirstDescendant(
+                    _fixture.Automation.ConditionFactory.ByAutomationId("ContractAbModeB")) == null,
+            "挂单模式只能由 Floating Bottom Window 的全局 A/B 控件配置");
 
         var switcher = floating.FindFirstDescendant(
             _fixture.Automation.ConditionFactory.ByAutomationId("AbModeSwitcher"));
+        switcher.Should().NotBeNull("Floating Bottom Window 必须保留全局挂单模式入口");
         var a = switcher!.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByName("A"))!.AsToggleButton();
+        var b = switcher.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByName("B"))!.AsToggleButton();
+        b.ToggleState.Should().Be(ToggleState.On, "全局挂单模式必须明确默认选中 B");
         _fixture.EnsureWindowForeground(floating);
         a.Focus();
         PressWindowKey(floating, VirtualKeyShort.SPACE);
-        UiTestHelpers.WaitTrue(() => windows.All(window =>
-                window.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByAutomationId("ContractAbModeA"))
-                    ?.AsRadioButton().IsChecked == true),
-            TimeSpan.FromSeconds(5)).Should().BeTrue("浮动栏切到 A 应广播给全部已创建合约窗口");
+        UiTestHelpers.WaitTrue(() => a.ToggleState == ToggleState.On, TimeSpan.FromSeconds(5))
+            .Should().BeTrue("全局挂单模式应可切到 A；广播意图由 Presentation 单测覆盖");
 
-        var b = switcher.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByName("B"))!.AsToggleButton();
         b.Focus();
         PressWindowKey(floating, VirtualKeyShort.SPACE);
-        UiTestHelpers.WaitTrue(() => windows.All(window =>
-                window.FindFirstDescendant(_fixture.Automation.ConditionFactory.ByAutomationId("ContractAbModeB"))
-                    ?.AsRadioButton().IsChecked == true),
-            TimeSpan.FromSeconds(5)).Should().BeTrue("切回 B 后全部合约窗口应恢复 B");
-    }
-
-    private void AssertPriceRowHeightStepper(Window tradingWindow)
-    {
-        var condition = _fixture.Automation.ConditionFactory.ByName("第一交易列");
-        var before = tradingWindow.FindAllDescendants(condition).First().BoundingRectangle.Height;
-        var stepper = tradingWindow.FindFirstDescendant(
-            _fixture.Automation.ConditionFactory.ByAutomationId("PriceRowHeightStep"));
-        stepper.Should().NotBeNull("合约窗口左栏必须提供价格梯格高 stepper");
-        var editor = stepper!.ControlType == ControlType.Edit
-            ? stepper
-            : stepper.FindFirstDescendant(
-                _fixture.Automation.ConditionFactory.ByControlType(ControlType.Edit));
-        editor.Should().NotBeNull("格高 stepper 必须暴露可聚焦的数值编辑区");
-        var textBox = editor!.AsTextBox();
-        var commitRoot = tradingWindow.FindFirstDescendant(
-            _fixture.Automation.ConditionFactory.ByAutomationId("AskQuoteRowCountStep"));
-        var commitTarget = commitRoot?.ControlType == ControlType.Edit
-            ? commitRoot
-            : commitRoot?.FindFirstDescendant(
-                _fixture.Automation.ConditionFactory.ByControlType(ControlType.Edit));
-        var originalValue = textBox.Text;
-        editor.Focus();
-        textBox.Text = "18";
-        commitTarget?.Focus();
-        UiTestHelpers.WaitTrue(
-            () => tradingWindow.FindAllDescendants(condition).First().BoundingRectangle.Height >= 17,
-            TimeSpan.FromSeconds(5)).Should().BeTrue("把格高编辑为 18 后，每个价格格子高度应同步变化");
-        editor.Focus();
-        textBox.Text = originalValue;
-        commitTarget?.Focus();
-        UiTestHelpers.WaitTrue(
-            () => tradingWindow.FindAllDescendants(condition).First().BoundingRectangle.Height == before,
-            TimeSpan.FromSeconds(5)).Should().BeTrue("测试结束应恢复原格高，避免污染持久化窗口配置");
+        UiTestHelpers.WaitTrue(() => b.ToggleState == ToggleState.On, TimeSpan.FromSeconds(5))
+            .Should().BeTrue("测试结束应切回默认 B，避免污染后续下单行为");
     }
 
     private void AssertFooterShowsHintWithoutStatusOverlap(Window tradingWindow)

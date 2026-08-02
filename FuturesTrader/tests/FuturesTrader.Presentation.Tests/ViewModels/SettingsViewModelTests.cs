@@ -5,6 +5,7 @@ using FuturesTrader.Application.Abstractions;
 using FuturesTrader.Application.Options;
 using FuturesTrader.Domain.Configuration;
 using FuturesTrader.Domain.Connections;
+using FuturesTrader.Domain.Trading;
 using FuturesTrader.Domain.WindowGroups;
 using FuturesTrader.Presentation.Abstractions;
 using FuturesTrader.Presentation.Services;
@@ -31,7 +32,8 @@ public class SettingsViewModelTests
 
     private static SettingsViewModel CreateVm(
         CloudConfig? seedConfig = null,
-        IThemeService? theme = null)
+        IThemeService? theme = null,
+        RecordingTradingWindowInteractionService? interaction = null)
     {
         var repo = new InMemoryConfigRepository(seedConfig ?? SeedConfig);
         var options = Options.Create(new ConfigFileOptions { Path = "test.ini" });
@@ -49,9 +51,10 @@ public class SettingsViewModelTests
             dataOptions,
             NullLogger<UserAccountEditorViewModel>.Instance);
         theme ??= new ThemeService();
+        interaction ??= new RecordingTradingWindowInteractionService();
         return new SettingsViewModel(
             repo, options, windowGroups, accounts, theme, new KeyboardOperationService(),
-            NullLogger<SettingsViewModel>.Instance);
+            NullLogger<SettingsViewModel>.Instance, interaction);
     }
 
     // ── 主题切换（外观段）─────────────────────────────────────────────
@@ -197,7 +200,14 @@ public class SettingsViewModelTests
     {
         var vm = CreateVm(seedConfig: new CloudConfig
         {
-            Window = new WindowConfig { MainFont = "TestFont", CompactSpacing = 5 },
+            Window = new WindowConfig
+            {
+                MainFont = "TestFont",
+                CompactSpacing = 5,
+                TickRowHeights = 18,
+                AskQuoteRowCount = 35,
+                BidQuoteRowCount = 42,
+            },
             Order = new OrderConfig { RiskOpen = false, MaxInputCount = 20 },
             User = new UserConfig { HqAddress = "tcp://test:9999" }
         });
@@ -207,6 +217,9 @@ public class SettingsViewModelTests
         vm.State.Should().BeOfType<ConfigEditorState.Loaded>();
         vm.Window.MainFont.Should().Be("TestFont");
         vm.Window.CompactSpacing.Should().Be(5);
+        vm.Window.TickRowHeights.Should().Be(18);
+        vm.Window.AskQuoteRowCount.Should().Be(35);
+        vm.Window.BidQuoteRowCount.Should().Be(42);
         vm.Order.RiskOpen.Should().BeFalse();
         vm.Order.MaxInputCount.Should().Be(20);
         vm.User.HqAddress.Should().Be("tcp://test:9999");
@@ -230,13 +243,17 @@ public class SettingsViewModelTests
             new InMemoryAccountRepository(),
             dataOptions,
             NullLogger<UserAccountEditorViewModel>.Instance);
+        var interaction = new RecordingTradingWindowInteractionService();
         var vm = new SettingsViewModel(
             repo, options, windowGroups, accounts, new ThemeService(),
             new KeyboardOperationService(),
-            NullLogger<SettingsViewModel>.Instance);
+            NullLogger<SettingsViewModel>.Instance, interaction);
 
         await vm.LoadAsync();
         vm.Window.MainFont = "ModifiedFont";
+        vm.Window.TickRowHeights = 20;
+        vm.Window.AskQuoteRowCount = 36;
+        vm.Window.BidQuoteRowCount = 44;
         vm.Order.MaxInputCount = 99;
 
         await vm.SaveCommand.ExecuteAsync(null);
@@ -244,7 +261,12 @@ public class SettingsViewModelTests
         vm.LastSavedAt.Should().NotBeNull();
         var reloaded = repo.Load("test.ini");
         reloaded.Window.MainFont.Should().Be("ModifiedFont");
+        reloaded.Window.TickRowHeights.Should().Be(20);
+        reloaded.Window.AskQuoteRowCount.Should().Be(36);
+        reloaded.Window.BidQuoteRowCount.Should().Be(44);
         reloaded.Order.MaxInputCount.Should().Be(99);
+        interaction.DisplayConfigurations.Should().ContainSingle().Which.Should().Be(reloaded.Window,
+            "保存共享显示配置后，当前已打开的合约窗口必须立即应用同一套参数");
     }
 
     [Fact]
@@ -315,6 +337,22 @@ internal sealed class InMemoryConfigRepository : IConfigRepository
     public CloudConfig Load(string path) => _config;
 
     public void Save(string path, CloudConfig config) => _config = config;
+}
+
+internal sealed class RecordingTradingWindowInteractionService : ITradingWindowInteractionService
+{
+    public List<WindowConfig> DisplayConfigurations { get; } = [];
+
+    public void ApplyOnlyOpenToOpenWindows(bool onlyOpen) { }
+
+    public void ApplyOrderPlacementModeToOpenWindows(OrderPlacementMode placementMode) { }
+
+    public void ApplyWhiteGridVisibilityToOpenWindows(bool showWhiteGrid) { }
+
+    public void ApplyWindowDisplayConfigurationToOpenWindows(WindowConfig configuration) =>
+        DisplayConfigurations.Add(configuration);
+
+    public void RecenterVisiblePriceLadders(PriceLadderAnchor anchor) { }
 }
 
 /// <summary>

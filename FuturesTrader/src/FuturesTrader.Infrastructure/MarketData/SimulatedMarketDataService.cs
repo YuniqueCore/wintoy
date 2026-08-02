@@ -8,12 +8,14 @@ namespace FuturesTrader.Infrastructure.MarketData;
 
 /// <summary>
 /// <see cref="IMarketDataService"/> 的确定性 Mock：使用共享合约目录和每合约独立 seed，
-/// 按可配间隔生成带累计成交量、成交额、持仓量、高低价和五档深度的随机游走行情。
+/// 按可配间隔生成带累计成交量、成交额、持仓量、高低价和扩展深度的随机游走行情。
+/// 扩展深度仅用于 Mock，让默认 30 格乃至最大 100 格都能观察到动态量；真实 CTP 仍严格保留五档。
 /// ConnectAsync 立即转 Connected，用于离线开发、实机 UI 和自动化回归。
 /// </summary>
 public sealed class SimulatedMarketDataService : IMarketDataService
 {
     private const int DefaultSeed = 20_260_801;
+    private const int MockDepthLevelCount = 100;
 
     private readonly Subject<DepthMarketData> _marketData = new();
     private readonly Subject<ConnectionState> _connection = new();
@@ -214,18 +216,18 @@ public sealed class SimulatedMarketDataService : IMarketDataService
             _turnover += _lastPrice * tradeVolume * instrument.VolumeMultiple;
             _openInterest = Math.Max(100, _openInterest + _random.Next(-12, 18));
 
-            var bidPrices = new decimal[5];
-            var bidVolumes = new int[5];
-            var askPrices = new decimal[5];
-            var askVolumes = new int[5];
+            var bidPrices = new decimal[MockDepthLevelCount];
+            var bidVolumes = new int[MockDepthLevelCount];
+            var askPrices = new decimal[MockDepthLevelCount];
+            var askVolumes = new int[MockDepthLevelCount];
             var bidDistanceTicks = (_unquotedRowCount + 1) / 2;
             var askDistanceTicks = _unquotedRowCount + 1 - bidDistanceTicks;
-            for (var index = 0; index < 5; index++)
+            for (var index = 0; index < MockDepthLevelCount; index++)
             {
                 bidPrices[index] = _lastPrice - (bidDistanceTicks + index) * tick;
                 askPrices[index] = _lastPrice + (askDistanceTicks + index) * tick;
-                var depthFloor = Math.Max(2, Profile.TypicalDepthVolume - index * Profile.TypicalDepthVolume / 8);
-                var jitter = Math.Max(2, Profile.TypicalDepthVolume / 4);
+                var depthFloor = Math.Max(2, Profile.TypicalDepthVolume / (1 + index / 5));
+                var jitter = Math.Max(1, depthFloor / 3);
                 bidVolumes[index] = Math.Max(1, depthFloor + _random.Next(-jitter, jitter + 1));
                 askVolumes[index] = Math.Max(1, depthFloor + _random.Next(-jitter, jitter + 1));
             }

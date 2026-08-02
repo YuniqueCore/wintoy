@@ -15,7 +15,7 @@ public sealed partial class GroupButtonViewModel : ObservableObject
     /// <summary>分组名称（默认「组 N」，可重命名）。</summary>
     [ObservableProperty] private string _name = string.Empty;
 
-    /// <summary>组内窗口数（0 时按钮置灰）。</summary>
+    /// <summary>组内窗口数；0 仍可点击，以便选为空组后通过搜索添加合约。</summary>
     [ObservableProperty] private int _windowCount;
 
     /// <summary>是否选中（单选高亮）。</summary>

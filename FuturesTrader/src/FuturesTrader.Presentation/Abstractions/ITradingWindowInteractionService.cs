@@ -1,3 +1,4 @@
+using FuturesTrader.Domain.Configuration;
 using FuturesTrader.Domain.Trading;
 
 namespace FuturesTrader.Presentation.Abstractions;
@@ -16,6 +17,9 @@ public interface ITradingWindowInteractionService
 
     /// <summary>显示或隐藏价格梯无人报价行，并作为随后新建合约窗口的会话默认值。</summary>
     void ApplyWhiteGridVisibilityToOpenWindows(bool showWhiteGrid);
+
+    /// <summary>将 Settings 中的共享价格梯显示配置应用到全部已创建合约窗口。</summary>
+    void ApplyWindowDisplayConfigurationToOpenWindows(WindowConfig configuration);
 
     /// <summary>把当前可见合约窗口的价格梯定位到最优买价或最优卖价。</summary>
     void RecenterVisiblePriceLadders(PriceLadderAnchor anchor);

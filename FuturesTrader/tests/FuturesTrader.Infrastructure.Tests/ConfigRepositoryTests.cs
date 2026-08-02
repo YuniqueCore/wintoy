@@ -123,6 +123,9 @@ public class ConfigRepositoryTests : IDisposable
             {
                 MainFont = "微软雅黑",
                 CompactSpacing = 10,
+                TickRowHeights = 18,
+                AskQuoteRowCount = 36,
+                BidQuoteRowCount = 44,
                 PriceListRatios = [15, 20, 30, 20, 15],
                 AutoSize = true
             },
@@ -161,6 +164,9 @@ public class ConfigRepositoryTests : IDisposable
 
         loaded.Window.MainFont.Should().Be(original.Window.MainFont);
         loaded.Window.CompactSpacing.Should().Be(original.Window.CompactSpacing);
+        loaded.Window.TickRowHeights.Should().Be(original.Window.TickRowHeights);
+        loaded.Window.AskQuoteRowCount.Should().Be(original.Window.AskQuoteRowCount);
+        loaded.Window.BidQuoteRowCount.Should().Be(original.Window.BidQuoteRowCount);
         loaded.Window.PriceListRatios.Should().Equal(original.Window.PriceListRatios);
         loaded.Window.AutoSize.Should().Be(original.Window.AutoSize);
 

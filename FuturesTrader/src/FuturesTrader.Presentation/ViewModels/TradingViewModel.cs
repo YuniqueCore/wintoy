@@ -17,7 +17,8 @@ namespace FuturesTrader.Presentation.ViewModels;
 /// <summary>
 /// 合约交易窗口 ViewModel（TYYWin 复刻）：每合约一个实例，由 WindowManager 用 ActivatorUtilities 创建。
 /// 构造时订阅本合约行情流 → Dispatcher 刷新 <see cref="PriceLadder"/>（价差居中）+ 摘要字段。
-/// <see cref="InstrumentCode"/> 为合约代码；空方/多方显示行数由每窗口配置控制（默认各 30）。
+/// <see cref="InstrumentCode"/> 为合约代码；格高和空方/多方显示行数由 Settings 共享配置控制（默认各 30），
+/// 价格步长仍由本合约的 <see cref="Instrument.PriceTick"/> 独立驱动。
 /// 行情推送在 CTP/Mock 工作线程触发，回调内通过 <see cref="MarshalToUi"/> 切回 UI 线程刷新。
 /// <para>
 /// <see cref="Order"/> 为下单区 VM（买卖/开平/价格/数量 + 报单/撤单），行情到达时同步 PriceTick 给它做价格校验。
@@ -180,13 +181,13 @@ public sealed partial class TradingViewModel : ObservableObject, IDisposable
     /// <summary>右键点击挂单数（ValRight，默认 2，新手禁用）。</summary>
     [ObservableProperty] public partial int ValRight { get; set; } = 2;
 
-    /// <summary>单行高度（RowHeight，像素）。</summary>
+    /// <summary>所有合约窗口共享的单行高度（RowHeight，像素）。</summary>
     [ObservableProperty] public partial int RowHeight { get; set; } = 12;
 
-    /// <summary>卖一向上的空方价格行数；每个合约窗口独立持久化。</summary>
+    /// <summary>卖一向上的空方价格行数；运行时由 Settings 共享配置统一应用。</summary>
     [ObservableProperty] public partial int AskQuoteRowCount { get; set; } = 30;
 
-    /// <summary>买一向下的多方价格行数；每个合约窗口独立持久化。</summary>
+    /// <summary>买一向下的多方价格行数；运行时由 Settings 共享配置统一应用。</summary>
     [ObservableProperty] public partial int BidQuoteRowCount { get; set; } = 30;
 
     /// <summary>旧 RBOA 单选状态：A 模式（同合约同方向替换）。</summary>

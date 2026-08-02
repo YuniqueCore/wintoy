@@ -24,6 +24,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     private readonly ConfigFileOptions _options;
     private readonly IThemeService _theme;
     private readonly IKeyboardOperationService _keyboard;
+    private readonly ITradingWindowInteractionService? _tradingWindowInteraction;
     private readonly ILogger<SettingsViewModel> _logger;
     private readonly object _loadSync = new();
     private CloudConfig? _loadedConfig;
@@ -36,12 +37,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         UserAccountEditorViewModel accounts,
         IThemeService theme,
         IKeyboardOperationService keyboard,
-        ILogger<SettingsViewModel> logger)
+        ILogger<SettingsViewModel> logger,
+        ITradingWindowInteractionService? tradingWindowInteraction = null)
     {
         _repo = repo;
         _options = options.Value;
         _theme = theme;
         _keyboard = keyboard;
+        _tradingWindowInteraction = tradingWindowInteraction;
         _logger = logger;
         WindowGroups = windowGroups;
         Accounts = accounts;
@@ -220,6 +223,7 @@ public sealed partial class SettingsViewModel : ObservableObject
                 Shortcuts = shortcutConfig
             };
             await Task.Run(() => _repo.Save(_options.Path, config));
+            _tradingWindowInteraction?.ApplyWindowDisplayConfigurationToOpenWindows(config.Window);
             if (!_keyboard.TryApplyConfiguration(shortcutConfig, out var shortcutError))
                 throw new InvalidDataException(shortcutError);
             _loadedConfig = config;

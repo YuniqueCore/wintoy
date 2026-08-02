@@ -37,8 +37,8 @@ public class SimulatedMarketDataServiceTests
         sub.Dispose();
         ticks.Should().NotBeEmpty("订阅后应产出 tick");
         ticks.Should().AllSatisfy(t => t.InstrumentId.Should().Be("ag2608"));
-        ticks.Should().AllSatisfy(t => t.BidPrices.Should().HaveCount(5));
-        ticks.Should().AllSatisfy(t => t.AskPrices.Should().HaveCount(5));
+        ticks.Should().AllSatisfy(t => t.BidPrices.Should().HaveCount(100));
+        ticks.Should().AllSatisfy(t => t.AskPrices.Should().HaveCount(100));
     }
 
     [Fact]
@@ -148,6 +148,37 @@ public class SimulatedMarketDataServiceTests
         var unquotedRowCount = (int)((snapshot.AskPrices[0] - snapshot.BidPrices[0]) / priceTick) - 1;
         unquotedRowCount.Should().BeInRange(3, 7,
             "Mock 盘口应稳定呈现多行白格，而不是固定 last±1 tick 只产生一行");
+    }
+
+    [Fact]
+    public async Task Extended_mock_depth_populates_and_changes_volume_beyond_the_first_five_levels()
+    {
+        await using var service = new SimulatedMarketDataService(
+            20,
+            NullLogger<SimulatedMarketDataService>.Instance,
+            randomSeed: 20260802);
+        await service.ConnectAsync();
+        var snapshots = new List<DepthMarketData>();
+        var received = new TaskCompletionSource<IReadOnlyList<DepthMarketData>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        using var subscription = service.MarketDataStream.Subscribe(snapshot =>
+        {
+            snapshots.Add(snapshot);
+            if (snapshots.Count == 2) received.TrySetResult(snapshots.ToArray());
+        });
+
+        await service.SubscribeAsync(["ag2608"]);
+        var twoSnapshots = await received.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        twoSnapshots.Should().AllSatisfy(snapshot =>
+        {
+            snapshot.BidVolumes.Should().HaveCount(100).And.OnlyContain(volume => volume > 0);
+            snapshot.AskVolumes.Should().HaveCount(100).And.OnlyContain(volume => volume > 0);
+        });
+        twoSnapshots[1].BidVolumes.Skip(5).Should().NotEqual(twoSnapshots[0].BidVolumes.Skip(5),
+            "多区第 6 档以后也必须随 Mock 行情刷新，而不是永久空白");
+        twoSnapshots[1].AskVolumes.Skip(5).Should().NotEqual(twoSnapshots[0].AskVolumes.Skip(5),
+            "空区第 6 档以后也必须随 Mock 行情刷新，而不是永久空白");
     }
 
     [Fact]
